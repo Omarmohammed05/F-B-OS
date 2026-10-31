@@ -144,3 +144,39 @@ class RecipeLine(Base):
         ForeignKey("ingredients.id"), index=True
     )
     qty: Mapped[float] = mapped_column(Float, default=0)
+
+
+class Order(Base):
+    """A POS order. Column names (status/channel/payment) are the contract."""
+
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    number: Mapped[str] = mapped_column(String(12))
+    channel: Mapped[str] = mapped_column(String(16), default="dine_in")
+    table_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    customer_name: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(16), default="new")
+    payment_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    subtotal: Mapped[float] = mapped_column(Float, default=0)
+    tax: Mapped[float] = mapped_column(Float, default=0)
+    total: Mapped[float] = mapped_column(Float, default=0)
+    note: Mapped[str] = mapped_column(String(240), default="")
+    placed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class OrderItem(Base):
+    """Name and price are snapshotted so editing the menu never rewrites history."""
+
+    __tablename__ = "order_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
+    product_id: Mapped[int] = mapped_column(Integer, default=0)
+    name_ar: Mapped[str] = mapped_column(String(120))
+    name_en: Mapped[str] = mapped_column(String(120))
+    emoji: Mapped[str] = mapped_column(String(8), default="🍽️")
+    unit_price: Mapped[float] = mapped_column(Float, default=0)
+    qty: Mapped[int] = mapped_column(Integer, default=1)

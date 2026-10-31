@@ -1,0 +1,214 @@
+from collections import defaultdict
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..deps import current_tenant
+from ..models import Order, OrderItem, Product, Tenant
+
+router = APIRouter(prefix="/api/orders", tags=["orders"])
+
+OrderStatus = Literal["new", "preparing", "served", "cancelled"]
+Channel = Literal["dine_in", "takeaway", "delivery"]
+Payment = Literal["cash", "card", "wallet"]
+
+# Only these moves are accepted; a served or cancelled ticket is final.
+NEXT_STATUS: dict[str, set[str]] = {
+    "new": {"preparing", "cancelled"},
+    "preparing": {"served", "cancelled"},
+    "served": set(),
+    "cancelled": set(),
+}
+
+
+def order_items(db: Session, order_ids: list[int]) -> dict[int, list[OrderItem]]:
+    grouped: dict[int, list[OrderItem]] = defaultdict(list)
+    if not order_ids:
+        return grouped
+    rows = (
+        db.query(OrderItem)
+        .filter(OrderItem.order_id.in_(order_ids))
+        .order_by(OrderItem.id)
+        .all()
+    )
+    for row in rows:
+        grouped[row.order_id].append(row)
+    return grouped
+
+
+def serialize_order(order: Order, items: list[OrderItem]) -> dict:
+    return {
+        "id": order.id,
+        "number": order.number,
+        "channel": order.channel,
+        "table_no": order.table_no,
+        "customer_name": order.customer_name,
+        "status": order.status,
+        "payment_method": order.payment_method,
+        "subtotal": order.subtotal,
+        "tax": order.tax,
+        "total": order.total,
+        "note": order.note,
+        "placed_at": order.placed_at.isoformat() if order.placed_at else None,
+        "item_count": sum(item.qty for item in items),
+        "items": [
+            {
+                "id": item.id,
+                "product_id": item.product_id,
+                "name_ar": item.name_ar,
+                "name_en": item.name_en,
+                "emoji": item.emoji,
+                "unit_price": item.unit_price,
+                "qty": item.qty,
+                "line_total": round(item.unit_price * item.qty, 2),
+            }
+            for item in items
+        ],
+    }
+
+
+def get_order(db: Session, tenant: Tenant, order_id: int) -> Order:
+    order = (
+        db.query(Order)
+        .filter(Order.tenant_id == tenant.id, Order.id == order_id)
+        .first()
+    )
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+def serialize_one(db: Session, order: Order) -> dict:
+    return serialize_order(order, order_items(db, [order.id]).get(order.id, []))
+
+
+# ----------------------------------------------------------------- payloads
+
+
+class OrderItemIn(BaseModel):
+    product_id: int
+    qty: int = Field(gt=0, le=99)
+
+
+class OrderIn(BaseModel):
+    channel: Channel = "dine_in"
+    table_no: int | None = Field(default=None, ge=1, le=999)
+    customer_name: str = Field(default="", max_length=120)
+    payment_method: Payment | None = None
+    note: str = Field(default="", max_length=240)
+    items: list[OrderItemIn] = Field(min_length=1)
+
+
+class OrderPatch(BaseModel):
+    status: OrderStatus
+
+
+# ----------------------------------------------------------------- endpoints
+
+
+@router.get("")
+def list_orders(db: Session = Depends(get_db)):
+    tenant = current_tenant(db)
+    orders = (
+        db.query(Order)
+        .filter_by(tenant_id=tenant.id)
+        .order_by(Order.placed_at.desc(), Order.id.desc())
+        .limit(200)
+        .all()
+    )
+    grouped = order_items(db, [order.id for order in orders])
+    return {"orders": [serialize_order(order, grouped[order.id]) for order in orders]}
+
+
+@router.post("", status_code=201)
+def create_order(payload: OrderIn, db: Session = Depends(get_db)):
+    tenant = current_tenant(db)
+
+    if payload.channel == "dine_in" and payload.table_no is None:
+        raise HTTPException(status_code=400, detail="Choose a table for dine-in orders.")
+
+    quantities: dict[int, int] = defaultdict(int)
+    for line in payload.items:
+        quantities[line.product_id] += line.qty
+
+    products = {
+        product.id: product
+        for product in db.query(Product)
+        .filter(Product.tenant_id == tenant.id, Product.id.in_(quantities.keys()))
+        .all()
+    }
+    missing = [pid for pid in quantities if pid not in products]
+    if missing:
+        raise HTTPException(
+            status_code=400, detail="Some products are no longer on the menu."
+        )
+    unavailable = [product.name_en for product in products.values() if not product.is_available]
+    if unavailable:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Not available right now: {', '.join(unavailable)}.",
+        )
+
+    highest = db.query(func.max(Order.id)).filter_by(tenant_id=tenant.id).scalar()
+    order = Order(
+        tenant_id=tenant.id,
+        number=str(1001 + (highest or 0)),
+        channel=payload.channel,
+        table_no=payload.table_no if payload.channel == "dine_in" else None,
+        customer_name=payload.customer_name.strip(),
+        status="new",
+        payment_method=payload.payment_method,
+        note=payload.note.strip(),
+    )
+
+    subtotal = 0.0
+    items: list[OrderItem] = []
+    for product_id, qty in quantities.items():
+        product = products[product_id]
+        subtotal += product.price * qty
+        items.append(
+            OrderItem(
+                tenant_id=tenant.id,
+                product_id=product.id,
+                name_ar=product.name_ar,
+                name_en=product.name_en,
+                emoji=product.emoji,
+                unit_price=product.price,
+                qty=qty,
+            )
+        )
+
+    order.subtotal = round(subtotal, 2)
+    order.tax = round(subtotal * tenant.tax_rate / 100, 2)
+    order.total = round(order.subtotal + order.tax, 2)
+
+    db.add(order)
+    db.flush()
+    for item in items:
+        item.order_id = order.id
+        db.add(item)
+    db.commit()
+    db.refresh(order)
+
+    return serialize_order(order, items)
+
+
+@router.patch("/{order_id}")
+def update_order(order_id: int, patch: OrderPatch, db: Session = Depends(get_db)):
+    tenant = current_tenant(db)
+    order = get_order(db, tenant, order_id)
+
+    if patch.status not in NEXT_STATUS.get(order.status, set()):
+        raise HTTPException(
+            status_code=409,
+            detail=f"An order that is {order.status} cannot move to {patch.status}.",
+        )
+
+    order.status = patch.status
+    db.commit()
+    db.refresh(order)
+    return serialize_one(db, order)

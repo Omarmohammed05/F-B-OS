@@ -6,6 +6,8 @@ import InventoryPage from './pages/InventoryPage';
 import MenuPage from './pages/MenuPage';
 import ModulePage from './pages/ModulePage';
 import NotFound from './pages/NotFound';
+import OrdersPage from './pages/OrdersPage';
+import PosPage from './pages/PosPage';
 import RecipePage from './pages/RecipePage';
 import SetupPage from './pages/SetupPage';
 
@@ -16,6 +18,8 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route index element={<Dashboard />} />
           <Route path="setup" element={<SetupPage />} />
+          <Route path="pos" element={<PosPage />} />
+          <Route path="orders" element={<OrdersPage />} />
           <Route path="menu" element={<MenuPage />} />
           <Route path="menu/:productId/recipe" element={<RecipePage />} />
           <Route path="inventory" element={<InventoryPage />} />

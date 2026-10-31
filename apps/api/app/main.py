@@ -19,6 +19,8 @@ from .models import (
 )
 from .routes import inventory as inventory_routes
 from .routes import menu as menu_routes
+from .routes import orders as order_routes
+from .routes import pos as pos_routes
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -47,6 +49,8 @@ app.add_middleware(
 
 app.include_router(menu_routes.router)
 app.include_router(inventory_routes.router)
+app.include_router(pos_routes.router)
+app.include_router(order_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

@@ -1,8 +1,8 @@
 # AGENTS.md — F&B OS
 
-Phase 1: foundation, menu management and the recipe builder are real, working
-features. POS, orders, customers, loyalty, reports, team and settings are still
-placeholder surfaces (`ModulePage`) — do not present them as working.
+Phase 2: foundation, menu management, the recipe builder, the POS and the orders
+board are real, working features. Customers, loyalty, reports, team and settings
+are still placeholder surfaces (`ModulePage`) — do not present them as working.
 
 ## Run and verify
 
@@ -12,6 +12,8 @@ docker compose -f docker-compose.base44.yml ps            # db, api, web must be
 curl -s localhost:3000/api/dashboard | head -c 200        # proxied API through the web origin
 curl -s localhost:3000/api/menu | head -c 200             # menu + computed recipe cost
 curl -s localhost:3000/api/ingredients | head -c 200      # ingredient catalog
+curl -s localhost:3000/api/pos | head -c 200              # what the POS can sell
+curl -s localhost:3000/api/orders | head -c 200           # live tickets
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
 ```
@@ -78,3 +80,35 @@ service.
 - To exercise the write paths without touching seeded rows: create a product and
   a category, edit them, build its recipe, then delete the product and category.
   Deleting the product removes its recipe lines.
+
+## Phase 2: POS and orders
+
+- Tables: `orders`, `order_items`. The seed adds eight demo tickets (#1001–#1008)
+  across new / preparing / served / cancelled, only when `orders` is empty.
+- Money is stored on the order (`subtotal`, `tax`, `total`), and each line
+  snapshots the product name, emoji and unit price, so menu edits never rewrite
+  history. `order_items.product_id` is a plain integer with **no** foreign key,
+  which keeps deleting a product safe.
+- Tax is computed server-side from `tenants.tax_rate` (14%):
+  `total = subtotal + subtotal × rate`. The client never sends a price or a total.
+- `number` is `1001 + max(orders.id)`: unique without a database sequence.
+- Accepted status moves: `new → preparing | cancelled`,
+  `preparing → served | cancelled`. `served` and `cancelled` are final; anything
+  else returns **409**.
+- Endpoints: `GET /api/orders` (newest first, 200 cap),
+  `POST /api/orders` (`{channel, table_no?, customer_name?, payment_method?,
+  note?, items: [{product_id, qty}]}`, 201 with the created order),
+  `PATCH /api/orders/{id}` (`{status}`), `GET /api/pos` (active categories +
+  available products, `tax_rate`, `table_count`). POST rejects dine-in without a
+  table (400), unknown products (400) and unavailable products (409).
+- The POS table picker is simply 1…`table_count`, where `table_count` comes from
+  `daily_metrics.total_tables` — illustrative seed data, not a real table map.
+  There is no shift, split payment or stock deduction on sale yet.
+- UI routes: `/pos` (grid + cart, channel, table/customer, payment, send) and
+  `/orders` (new / preparing / served columns plus a cancelled list, detail sheet
+  with the same status actions, 20s silent refresh).
+- The dashboard KPIs and recent activity are still the illustrative seed rows —
+  they do not read from `orders`. Only the orders board shows real tickets.
+- Exercise the write paths with your own ticket: place one in the POS, move it
+  new → preparing → served on the board, then delete that order (its items first)
+  if it was only a test.

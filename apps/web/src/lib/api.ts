@@ -157,6 +157,56 @@ export type RecipeData = {
   };
 };
 
+export type OrderChannel = 'dine_in' | 'takeaway' | 'delivery';
+export type OrderStatus = 'new' | 'preparing' | 'served' | 'cancelled';
+export type PaymentMethod = 'cash' | 'card' | 'wallet';
+
+export type PosCatalog = {
+  categories: MenuCategory[];
+  products: MenuProduct[];
+  tax_rate: number;
+  table_count: number;
+};
+
+export type OrderItem = {
+  id: number;
+  product_id: number;
+  name_ar: string;
+  name_en: string;
+  emoji: string;
+  unit_price: number;
+  qty: number;
+  line_total: number;
+};
+
+export type Order = {
+  id: number;
+  number: string;
+  channel: OrderChannel;
+  table_no: number | null;
+  customer_name: string;
+  status: OrderStatus;
+  payment_method: PaymentMethod | null;
+  subtotal: number;
+  tax: number;
+  total: number;
+  note: string;
+  placed_at: string | null;
+  item_count: number;
+  items: OrderItem[];
+};
+
+export type OrdersData = { orders: Order[] };
+
+export type OrderInput = {
+  channel: OrderChannel;
+  table_no?: number | null;
+  customer_name?: string;
+  payment_method: PaymentMethod | null;
+  note?: string;
+  items: { product_id: number; qty: number }[];
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -231,4 +281,17 @@ export const api = {
     }),
   deleteIngredient: (id: number) =>
     request<IngredientsData>(`/api/ingredients/${id}`, { method: 'DELETE' }),
+
+  pos: () => request<PosCatalog>('/api/pos'),
+  orders: () => request<OrdersData>('/api/orders'),
+  createOrder: (body: OrderInput) =>
+    request<Order>('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateOrder: (id: number, status: OrderStatus) =>
+    request<Order>(`/api/orders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
 };

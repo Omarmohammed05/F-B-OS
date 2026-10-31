@@ -8,6 +8,8 @@ from .models import (
     DailyMetric,
     Ingredient,
     MenuCategory,
+    Order,
+    OrderItem,
     PaymentSplit,
     PopularItem,
     Product,
@@ -143,6 +145,35 @@ PRODUCTS = [
     ("Desserts", "كرواسون", "Croissant", "🥐", 30.0, True, {}),
     ("Sandwiches", "سندوتش جبن", "Cheese Sandwich", "🥪", 55.0, True, {"Toast bread": 2, "Cheddar cheese": 40, "Tomato": 30}),
     ("Sandwiches", "سندوتش فراخ", "Chicken Sandwich", "🍗", 65.0, False, {}),
+]
+
+
+# (channel, table, customer, status, payment, minutes ago, [(product_en, qty)])
+DEMO_ORDERS = [
+    ("dine_in", 7, "", "preparing", "cash", 24, [("Latte", 2), ("Cheesecake", 1)]),
+    ("takeaway", None, "Mona", "new", "card", 6, [("Cappuccino", 1), ("Croissant", 2)]),
+    (
+        "delivery",
+        None,
+        "Ahmed",
+        "new",
+        "wallet",
+        3,
+        [("Iced Latte", 1), ("Cheese Sandwich", 1)],
+    ),
+    ("dine_in", 3, "", "served", "card", 55, [("Espresso", 2)]),
+    ("dine_in", 12, "", "preparing", "cash", 14, [("Turkish Coffee", 2), ("Croissant", 1)]),
+    ("takeaway", None, "", "served", "cash", 80, [("Latte", 1)]),
+    ("dine_in", 5, "", "cancelled", None, 120, [("Cheesecake", 1)]),
+    (
+        "delivery",
+        None,
+        "Sara",
+        "served",
+        "card",
+        95,
+        [("Cappuccino", 2), ("Cheesecake", 1)],
+    ),
 ]
 
 
@@ -317,6 +348,56 @@ def seed() -> None:
                         qty=qty,
                     )
                 )
+
+        if db.query(Order).filter_by(tenant_id=tenant.id).count() == 0:
+            catalog = {
+                row.name_en: row
+                for row in db.query(Product).filter_by(tenant_id=tenant.id).all()
+            }
+            now = datetime.now()
+            for index, (
+                channel,
+                table_no,
+                customer,
+                status,
+                payment,
+                minutes,
+                lines,
+            ) in enumerate(DEMO_ORDERS):
+                order = Order(
+                    tenant_id=tenant.id,
+                    number=str(1001 + index),
+                    channel=channel,
+                    table_no=table_no,
+                    customer_name=customer,
+                    status=status,
+                    payment_method=payment,
+                    placed_at=now - timedelta(minutes=minutes),
+                )
+                subtotal = 0.0
+                items = []
+                for name_en, qty in lines:
+                    product = catalog[name_en]
+                    subtotal += product.price * qty
+                    items.append(
+                        OrderItem(
+                            tenant_id=tenant.id,
+                            product_id=product.id,
+                            name_ar=product.name_ar,
+                            name_en=product.name_en,
+                            emoji=product.emoji,
+                            unit_price=product.price,
+                            qty=qty,
+                        )
+                    )
+                order.subtotal = round(subtotal, 2)
+                order.tax = round(subtotal * tenant.tax_rate / 100, 2)
+                order.total = round(order.subtotal + order.tax, 2)
+                db.add(order)
+                db.flush()
+                for item in items:
+                    item.order_id = order.id
+                    db.add(item)
 
         db.commit()
         print("seed: ok")
