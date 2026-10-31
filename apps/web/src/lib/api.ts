@@ -53,13 +53,124 @@ export type DashboardData = {
   setup: SetupState;
 };
 
+export type MenuCategory = {
+  id: number;
+  name_ar: string;
+  name_en: string;
+  emoji: string;
+  is_active: boolean;
+  product_count: number;
+};
+
+export type MenuProduct = {
+  id: number;
+  category_id: number;
+  name_ar: string;
+  name_en: string;
+  emoji: string;
+  price: number;
+  is_available: boolean;
+  sort: number;
+  cost: number;
+  margin: number;
+  margin_pct: number;
+  recipe_lines: number;
+};
+
+export type MenuData = {
+  categories: MenuCategory[];
+  products: MenuProduct[];
+  summary: {
+    product_count: number;
+    category_count: number;
+    without_recipe: number;
+    avg_margin_pct: number;
+  };
+};
+
+export type CategoryInput = {
+  name_ar: string;
+  name_en: string;
+  emoji: string;
+  is_active?: boolean;
+};
+
+export type ProductInput = {
+  category_id: number;
+  name_ar: string;
+  name_en: string;
+  emoji: string;
+  price: number;
+  is_available: boolean;
+};
+
+export type IngredientUnit = 'g' | 'ml' | 'pc';
+
+export type Ingredient = {
+  id: number;
+  name_ar: string;
+  name_en: string;
+  unit: IngredientUnit;
+  unit_cost: number;
+  stock_qty: number;
+  recipes_using: number;
+};
+
+export type IngredientsData = { ingredients: Ingredient[] };
+
+export type IngredientInput = {
+  name_ar: string;
+  name_en: string;
+  unit: IngredientUnit;
+  unit_cost: number;
+  stock_qty: number;
+};
+
+export type RecipeLineInput = { ingredient_id: number; qty: number };
+
+export type RecipeIngredient = {
+  ingredient_id: number;
+  name_ar: string;
+  name_en: string;
+  unit: IngredientUnit;
+  unit_cost: number;
+  qty: number;
+  line_cost: number;
+};
+
+export type RecipeData = {
+  product: {
+    id: number;
+    category_id: number;
+    name_ar: string;
+    name_en: string;
+    emoji: string;
+    price: number;
+    is_available: boolean;
+  };
+  lines: RecipeIngredient[];
+  totals: {
+    cost: number;
+    price: number;
+    margin: number;
+    food_cost_pct: number;
+  };
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   });
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let message = `Request failed: ${response.status}`;
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      if (body?.detail) message = `${response.status}: ${String(body.detail)}`;
+    } catch {
+      // Non-JSON error body; keep the status message.
+    }
+    throw new Error(message);
   }
   return (await response.json()) as T;
 }
@@ -72,4 +183,52 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ is_done: isDone }),
     }),
+
+  menu: () => request<MenuData>('/api/menu'),
+  createCategory: (body: CategoryInput) =>
+    request<MenuData>('/api/menu/categories', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateCategory: (id: number, body: Partial<CategoryInput>) =>
+    request<MenuData>(`/api/menu/categories/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteCategory: (id: number) =>
+    request<MenuData>(`/api/menu/categories/${id}`, { method: 'DELETE' }),
+  createProduct: (body: ProductInput) =>
+    request<MenuData>('/api/menu/products', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateProduct: (id: number, body: Partial<ProductInput>) =>
+    request<MenuData>(`/api/menu/products/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteProduct: (id: number) =>
+    request<MenuData>(`/api/menu/products/${id}`, { method: 'DELETE' }),
+
+  recipe: (productId: number) =>
+    request<RecipeData>(`/api/menu/products/${productId}/recipe`),
+  saveRecipe: (productId: number, lines: RecipeLineInput[]) =>
+    request<RecipeData>(`/api/menu/products/${productId}/recipe`, {
+      method: 'PUT',
+      body: JSON.stringify({ lines }),
+    }),
+
+  ingredients: () => request<IngredientsData>('/api/ingredients'),
+  createIngredient: (body: IngredientInput) =>
+    request<IngredientsData>('/api/ingredients', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateIngredient: (id: number, body: Partial<IngredientInput>) =>
+    request<IngredientsData>(`/api/ingredients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteIngredient: (id: number) =>
+    request<IngredientsData>(`/api/ingredients/${id}`, { method: 'DELETE' }),
 };

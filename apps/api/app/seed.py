@@ -6,8 +6,12 @@ from .db import Base, SessionLocal, engine
 from .models import (
     ActivityRow,
     DailyMetric,
+    Ingredient,
+    MenuCategory,
     PaymentSplit,
     PopularItem,
+    Product,
+    RecipeLine,
     RevenuePoint,
     SetupTask,
     Tenant,
@@ -105,6 +109,42 @@ PAYMENTS = [
 
 REVENUE = [6120.0, 7480.0, 5960.0, 8340.0, 7015.0, 9120.0, 9431.42]
 
+# Phase 1: menu, ingredients and recipes. Costs are EGP per stored unit.
+CATEGORIES = [
+    ("قهوة ساخنة", "Hot Coffee", "☕"),
+    ("مشروبات باردة", "Cold Drinks", "🧊"),
+    ("حلويات", "Desserts", "🍰"),
+    ("سندوتشات", "Sandwiches", "🥪"),
+]
+
+INGREDIENTS = [
+    ("حبوب قهوة", "Coffee beans", "g", 0.45, 5000),
+    ("حليب", "Milk", "ml", 0.038, 24000),
+    ("سكر", "Sugar", "g", 0.022, 12000),
+    ("صوص شوكولاتة", "Chocolate sauce", "ml", 0.12, 3000),
+    ("كريمة خفق", "Whipping cream", "ml", 0.09, 4000),
+    ("دقيق", "Flour", "g", 0.012, 15000),
+    ("جبن كريمي", "Cream cheese", "g", 0.14, 4000),
+    ("زبدة", "Butter", "g", 0.14, 3000),
+    ("خبز توست", "Toast bread", "pc", 3.5, 120),
+    ("جبن شيدر", "Cheddar cheese", "g", 0.24, 2500),
+    ("طماطم", "Tomato", "g", 0.02, 5000),
+    ("كوب ورقي", "Paper cup", "pc", 1.2, 800),
+]
+
+PRODUCTS = [
+    ("Hot Coffee", "إسبريسو", "Espresso", "☕", 40.0, True, {"Coffee beans": 18, "Paper cup": 1}),
+    ("Hot Coffee", "قهوة تركي", "Turkish Coffee", "☕", 35.0, True, {"Coffee beans": 10, "Sugar": 8, "Paper cup": 1}),
+    ("Hot Coffee", "لاتيه", "Latte", "🥛", 55.0, True, {"Coffee beans": 18, "Milk": 200, "Paper cup": 1}),
+    ("Hot Coffee", "كابتشينو", "Cappuccino", "☕", 50.0, True, {"Coffee beans": 18, "Milk": 120, "Paper cup": 1}),
+    ("Cold Drinks", "آيس لاتيه", "Iced Latte", "🧊", 62.0, True, {"Coffee beans": 18, "Milk": 180, "Paper cup": 1}),
+    ("Cold Drinks", "موكا مثلجة", "Iced Mocha", "🧋", 70.0, True, {"Coffee beans": 18, "Milk": 150, "Chocolate sauce": 30, "Whipping cream": 20, "Paper cup": 1}),
+    ("Desserts", "تشيز كيك", "Cheesecake", "🍰", 65.0, True, {"Cream cheese": 90, "Sugar": 25, "Butter": 20, "Flour": 15}),
+    ("Desserts", "كرواسون", "Croissant", "🥐", 30.0, True, {}),
+    ("Sandwiches", "سندوتش جبن", "Cheese Sandwich", "🥪", 55.0, True, {"Toast bread": 2, "Cheddar cheese": 40, "Tomato": 30}),
+    ("Sandwiches", "سندوتش فراخ", "Chicken Sandwich", "🍗", 65.0, False, {}),
+]
+
 
 def seed() -> None:
     Base.metadata.create_all(bind=engine)
@@ -192,6 +232,89 @@ def seed() -> None:
                         tenant_id=tenant.id,
                         day=today - timedelta(days=len(REVENUE) - 1 - offset),
                         amount=amount,
+                    )
+                )
+
+        # Menu, ingredients and recipes are matched by English name so a
+        # partial seed can be completed without duplicating rows.
+        category_ids = {
+            row.name_en: row.id
+            for row in db.query(MenuCategory).filter_by(tenant_id=tenant.id).all()
+        }
+        for sort, (name_ar, name_en, emoji) in enumerate(CATEGORIES):
+            if name_en in category_ids:
+                continue
+            category = MenuCategory(
+                tenant_id=tenant.id,
+                name_ar=name_ar,
+                name_en=name_en,
+                emoji=emoji,
+                sort=sort,
+            )
+            db.add(category)
+            db.flush()
+            category_ids[name_en] = category.id
+
+        ingredient_ids = {
+            row.name_en: row.id
+            for row in db.query(Ingredient).filter_by(tenant_id=tenant.id).all()
+        }
+        for name_ar, name_en, unit, unit_cost, stock_qty in INGREDIENTS:
+            if name_en in ingredient_ids:
+                continue
+            ingredient = Ingredient(
+                tenant_id=tenant.id,
+                name_ar=name_ar,
+                name_en=name_en,
+                unit=unit,
+                unit_cost=unit_cost,
+                stock_qty=stock_qty,
+            )
+            db.add(ingredient)
+            db.flush()
+            ingredient_ids[name_en] = ingredient.id
+
+        product_ids = {
+            row.name_en: row.id
+            for row in db.query(Product).filter_by(tenant_id=tenant.id).all()
+        }
+        for sort, (category_en, name_ar, name_en, emoji, price, available, _) in enumerate(
+            PRODUCTS
+        ):
+            if name_en in product_ids:
+                continue
+            product = Product(
+                tenant_id=tenant.id,
+                category_id=category_ids[category_en],
+                name_ar=name_ar,
+                name_en=name_en,
+                emoji=emoji,
+                price=price,
+                is_available=available,
+                sort=sort,
+            )
+            db.add(product)
+            db.flush()
+            product_ids[name_en] = product.id
+
+        products_with_recipe = {
+            product_id
+            for (product_id,) in db.query(RecipeLine.product_id)
+            .filter(RecipeLine.tenant_id == tenant.id)
+            .distinct()
+            .all()
+        }
+        for _, _, name_en, _, _, _, recipe in PRODUCTS:
+            product_id = product_ids[name_en]
+            if not recipe or product_id in products_with_recipe:
+                continue
+            for ingredient_en, qty in recipe.items():
+                db.add(
+                    RecipeLine(
+                        tenant_id=tenant.id,
+                        product_id=product_id,
+                        ingredient_id=ingredient_ids[ingredient_en],
+                        qty=qty,
                     )
                 )
 

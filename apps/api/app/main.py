@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .db import get_db
+from .deps import current_tenant
 from .models import (
     ActivityRow,
     DailyMetric,
@@ -15,6 +16,8 @@ from .models import (
     SetupTask,
     Tenant,
 )
+from .routes import inventory as inventory_routes
+from .routes import menu as menu_routes
 
 app = FastAPI(title="F&B OS API", version="0.1.0")
 
@@ -32,11 +35,8 @@ app.add_middleware(
 )
 
 
-def current_tenant(db: Session) -> Tenant:
-    tenant = db.query(Tenant).first()
-    if tenant is None:
-        raise HTTPException(status_code=503, detail="Tenant not seeded")
-    return tenant
+app.include_router(menu_routes.router)
+app.include_router(inventory_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

@@ -92,3 +92,55 @@ class PaymentSplit(Base):
     method_ar: Mapped[str] = mapped_column(String(60))
     method_en: Mapped[str] = mapped_column(String(60))
     amount: Mapped[float] = mapped_column(Float, default=0)
+
+
+class MenuCategory(Base):
+    __tablename__ = "menu_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name_ar: Mapped[str] = mapped_column(String(120))
+    name_en: Mapped[str] = mapped_column(String(120))
+    emoji: Mapped[str] = mapped_column(String(8), default="🍽️")
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("menu_categories.id"), index=True
+    )
+    name_ar: Mapped[str] = mapped_column(String(120))
+    name_en: Mapped[str] = mapped_column(String(120))
+    emoji: Mapped[str] = mapped_column(String(8), default="🍽️")
+    price: Mapped[float] = mapped_column(Float, default=0)
+    is_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Ingredient(Base):
+    __tablename__ = "ingredients"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name_ar: Mapped[str] = mapped_column(String(120))
+    name_en: Mapped[str] = mapped_column(String(120))
+    unit: Mapped[str] = mapped_column(String(8), default="g")
+    unit_cost: Mapped[float] = mapped_column(Float, default=0)
+    stock_qty: Mapped[float] = mapped_column(Float, default=0)
+
+
+class RecipeLine(Base):
+    __tablename__ = "recipe_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    ingredient_id: Mapped[int] = mapped_column(
+        ForeignKey("ingredients.id"), index=True
+    )
+    qty: Mapped[float] = mapped_column(Float, default=0)

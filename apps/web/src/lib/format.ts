@@ -47,3 +47,21 @@ export function formatPercent(lang: Lang, value: number) {
   const sign = value > 0 ? '+' : '';
   return `${sign}${formatNumber(lang, value, 1)}%`;
 }
+
+// Ingredient costs are often fractions of a pound (0.038 for milk), so the
+// recipe screens need more precision than a menu price.
+export function formatMoney(
+  lang: Lang,
+  value: number,
+  currency = 'EGP',
+  digits = 2,
+) {
+  const scale = 10 ** digits;
+  const hasFraction = Math.round(value * scale) % scale !== 0;
+  return new Intl.NumberFormat(locale(lang), {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: hasFraction ? digits : 0,
+    maximumFractionDigits: digits,
+  }).format(value);
+}

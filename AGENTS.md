@@ -1,7 +1,8 @@
 # AGENTS.md — F&B OS
 
-Phase 0 foundation only: shell, RTL/English switching, setup flow, illustrative
-dashboard. Operational modules are placeholders — do not present them as working.
+Phase 1: foundation, menu management and the recipe builder are real, working
+features. POS, orders, customers, loyalty, reports, team and settings are still
+placeholder surfaces (`ModulePage`) — do not present them as working.
 
 ## Run and verify
 
@@ -9,6 +10,8 @@ dashboard. Operational modules are placeholders — do not present them as worki
 docker compose -f docker-compose.base44.yml up -d --build
 docker compose -f docker-compose.base44.yml ps            # db, api, web must be healthy
 curl -s localhost:3000/api/dashboard | head -c 200        # proxied API through the web origin
+curl -s localhost:3000/api/menu | head -c 200             # menu + computed recipe cost
+curl -s localhost:3000/api/ingredients | head -c 200      # ingredient catalog
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
 ```
@@ -49,3 +52,27 @@ service.
   is emoji on a neutral tile; there are no product photos in Phase 0.
 - Setup progress is real persisted state (`setup_tasks`, `PATCH /api/setup/{key}`).
   Seeded with 6 of 7 done so the "finish setup" flow is visible on first load.
+
+## Phase 1: menu, ingredients and recipes
+
+- Tables: `menu_categories`, `products`, `ingredients`, `recipe_lines`. There is
+  no Alembic — `migrate` runs `Base.metadata.create_all`, so new tables appear on
+  the next migrate run. Re-running the seed after a deploy is safe:
+  `docker compose -f docker-compose.base44.yml exec -T api python -m app.seed`.
+- Menu + ingredient seed data is matched by **English name**, so a partially
+  seeded database is completed without duplicates. Seeded rows are still never
+  updated; drop the `pgdata` volume to re-seed from scratch.
+- A product's cost is always derived: `sum(recipe_lines.qty × ingredients.unit_cost)`
+  (EGP per stored unit), never stored. `margin = price − cost`; `margin_pct` is
+  the gross margin share of price.
+- Endpoints: `GET/POST/PATCH/DELETE /api/menu/categories[/{id}]`,
+  `.../api/menu/products[/{id}]`, `GET|PUT /api/menu/products/{id}/recipe`,
+  `GET/POST/PATCH/DELETE /api/ingredients[/{id}]`. Category mutations return the
+  whole menu payload; recipe PUT replaces all lines for the product.
+- Deleting a category that still has products, or an ingredient used by a recipe,
+  returns **409**. The UI disables those actions instead of relying on the error.
+- UI routes: `/menu` (categories + products + availability), `/menu/:productId/recipe`
+  (recipe builder with live cost/margin), `/inventory` (ingredient catalog).
+- To exercise the write paths without touching seeded rows: create a product and
+  a category, edit them, build its recipe, then delete the product and category.
+  Deleting the product removes its recipe lines.
