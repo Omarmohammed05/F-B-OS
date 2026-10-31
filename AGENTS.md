@@ -127,7 +127,11 @@ service.
   columns live in `ADDITIVE_COLUMNS` in `apps/api/app/db.py` and are applied by
   `ensure_columns()` (called from the API lifespan and from the seed). **A new
   column on an existing table only reaches an existing database through that
-  list** — add it there as well as in `models.py`.
+  list** — add it there as well as in `models.py`. Add both in the same save:
+  `uvicorn --reload` restarts on the `models.py` edit alone, so the request made
+  before the `db.py` edit lands logs one `column ... does not exist` 500 in the
+  `db` logs until the next reload applies the `ALTER`. That window is a reload
+  artefact, not a schema bug — check `\d orders` and the endpoint before chasing it.
 - The POS never sends a customer id: `POST /api/orders` resolves a named guest by
   case-insensitive name and creates the profile when it is new, so every ticket
   with a name feeds the guest book. `customer_id` can still be passed explicitly.
