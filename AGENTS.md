@@ -57,7 +57,9 @@ service.
 
 - Tables: `menu_categories`, `products`, `ingredients`, `recipe_lines`. There is
   no Alembic — `migrate` runs `Base.metadata.create_all`, so new tables appear on
-  the next migrate run. Re-running the seed after a deploy is safe:
+  the next migrate run. The API also runs the same idempotent `create_all` in its
+  startup lifespan, so a `uvicorn --reload` restart after a model edit never
+  serves a 500 for a not-yet-created table. Re-running the seed after a deploy is safe:
   `docker compose -f docker-compose.base44.yml exec -T api python -m app.seed`.
 - Menu + ingredient seed data is matched by **English name**, so a partially
   seeded database is completed without duplicates. Seeded rows are still never
