@@ -1,8 +1,9 @@
 # AGENTS.md — F&B OS
 
-Phase 2: foundation, menu management, the recipe builder, the POS and the orders
-board are real, working features. Customers, loyalty, reports, team and settings
-are still placeholder surfaces (`ModulePage`) — do not present them as working.
+Phase 3: foundation, menu management, the recipe builder, the POS, the orders
+board, the customer book, real reports and the team roster are working features.
+Loyalty and settings are still placeholder surfaces (`ModulePage`) — do not
+present them as working.
 
 ## Run and verify
 
@@ -14,6 +15,9 @@ curl -s localhost:3000/api/menu | head -c 200             # menu + computed reci
 curl -s localhost:3000/api/ingredients | head -c 200      # ingredient catalog
 curl -s localhost:3000/api/pos | head -c 200              # what the POS can sell
 curl -s localhost:3000/api/orders | head -c 200           # live tickets
+curl -s localhost:3000/api/customers | head -c 200        # guest book + derived stats
+curl -s "localhost:3000/api/reports?days=7" | head -c 200 # sales / food cost
+curl -s localhost:3000/api/team | head -c 200             # staff roster
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
 ```
@@ -112,3 +116,44 @@ service.
 - Exercise the write paths with your own ticket: place one in the POS, move it
   new → preparing → served on the board, then delete that order (its items first)
   if it was only a test.
+
+## Phase 3: customers, reports and the team
+
+- Tables: `customers`, `staff`, plus `orders.customer_id`. That column is a plain
+  integer defaulting to **0** (no foreign key), so deleting a guest never rewrites
+  or breaks an order; deleting a customer only clears the link and the order keeps
+  its own `customer_name` snapshot.
+- `create_all` never adds a column to a table that already exists, so additive
+  columns live in `ADDITIVE_COLUMNS` in `apps/api/app/db.py` and are applied by
+  `ensure_columns()` (called from the API lifespan and from the seed). **A new
+  column on an existing table only reaches an existing database through that
+  list** — add it there as well as in `models.py`.
+- The POS never sends a customer id: `POST /api/orders` resolves a named guest by
+  case-insensitive name and creates the profile when it is new, so every ticket
+  with a name feeds the guest book. `customer_id` can still be passed explicitly.
+- Guest stats (`visits`, `spend`, `last_visit`) are derived per request from
+  non-cancelled orders — nothing is stored on `customers`. Seeded guests: Mona,
+  Ahmed, Sara, Omar Khaled, Nour Ibrahim; the seed also links existing demo tickets
+  whose `customer_name` matches one of them.
+- Endpoints: `GET/POST /api/customers`, `GET/PATCH/DELETE /api/customers/{id}`
+  (detail returns the guest plus their last 50 orders).
+- Reports are computed from real orders only (the dashboard KPIs are still seed
+  rows): `GET /api/reports?days=7|30` and `GET /api/reports/export.csv?days=7`.
+  Cancelled tickets are excluded from every figure except the cancelled count.
+  `revenue` is net of tax (`subtotal`); `tax` and `total` are reported separately.
+  Food cost is the **current** recipe cost x quantity sold, so editing an
+  ingredient's unit cost changes historical food cost but not historical revenue.
+  `top_products`, `channels` and `payments` are revenue-sorted and capped at five
+  products.
+- Team: `GET/POST /api/team`, `PATCH/DELETE /api/team/{id}`. Roles are
+  owner / manager / cashier / kitchen. The last active owner cannot be demoted,
+  deactivated or deleted (**409**) — the UI shows that message instead.
+- UI routes: `/customers` (searchable book, detail sheet with order history),
+  `/reports` (7/30-day range, chart, margin, top products, channel/payment splits,
+  CSV download) and `/team` (roster with role chips and an active toggle).
+- The 30-day report passes `labelEvery` to `RevenueChart` so six day labels are
+  spread across the width instead of one truncated label per bar; the dashboard
+  keeps the default (every point).
+- Exercise the write paths with your own rows: add a customer, open its sheet,
+  rename it, delete it; add a staff member, toggle them inactive, delete them.
+  Both are removed through the UI in the verification flow - leave none behind.

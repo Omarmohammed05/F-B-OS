@@ -184,6 +184,7 @@ export type Order = {
   number: string;
   channel: OrderChannel;
   table_no: number | null;
+  customer_id: number;
   customer_name: string;
   status: OrderStatus;
   payment_method: PaymentMethod | null;
@@ -201,10 +202,101 @@ export type OrdersData = { orders: Order[] };
 export type OrderInput = {
   channel: OrderChannel;
   table_no?: number | null;
+  customer_id?: number;
   customer_name?: string;
   payment_method: PaymentMethod | null;
   note?: string;
   items: { product_id: number; qty: number }[];
+};
+
+export type Customer = {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  notes: string;
+  created_at: string | null;
+  visits: number;
+  spend: number;
+  last_visit: string | null;
+};
+
+export type CustomersData = {
+  customers: Customer[];
+  summary: { total: number; repeat: number; lifetime_spend: number };
+};
+
+export type CustomerInput = {
+  name: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+};
+
+export type CustomerDetail = { customer: Customer; orders: Order[] };
+
+export type ReportPoint = {
+  day: string;
+  orders: number;
+  revenue: number;
+  food_cost: number;
+};
+
+export type ReportData = {
+  days: number;
+  start: string;
+  series: ReportPoint[];
+  totals: {
+    orders: number;
+    items: number;
+    revenue: number;
+    tax: number;
+    total: number;
+    food_cost: number;
+    gross_margin: number;
+    gross_margin_pct: number;
+    food_cost_pct: number;
+    avg_ticket: number;
+    cancelled_orders: number;
+    cancelled_value: number;
+  };
+  top_products: {
+    product_id: number;
+    name_ar: string;
+    name_en: string;
+    emoji: string;
+    qty: number;
+    revenue: number;
+  }[];
+  channels: { channel: OrderChannel; orders: number; revenue: number }[];
+  payments: { payment_method: PaymentMethod; orders: number; revenue: number }[];
+};
+
+export type StaffRole = 'owner' | 'manager' | 'cashier' | 'kitchen';
+
+export type StaffMember = {
+  id: number;
+  name: string;
+  phone: string;
+  role: StaffRole;
+  is_active: boolean;
+  created_at: string | null;
+};
+
+export type TeamData = {
+  staff: StaffMember[];
+  summary: {
+    total: number;
+    active: number;
+    roles: Record<StaffRole, number>;
+  };
+};
+
+export type StaffInput = {
+  name: string;
+  phone?: string;
+  role: StaffRole;
+  is_active?: boolean;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -294,4 +386,37 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+
+  customers: () => request<CustomersData>('/api/customers'),
+  customer: (id: number) =>
+    request<CustomerDetail>(`/api/customers/${id}`),
+  createCustomer: (body: CustomerInput) =>
+    request<CustomersData>('/api/customers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateCustomer: (id: number, body: Partial<CustomerInput>) =>
+    request<CustomersData>(`/api/customers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteCustomer: (id: number) =>
+    request<CustomersData>(`/api/customers/${id}`, { method: 'DELETE' }),
+
+  report: (days: number) => request<ReportData>(`/api/reports?days=${days}`),
+  reportCsvUrl: (days: number) => `/api/reports/export.csv?days=${days}`,
+
+  team: () => request<TeamData>('/api/team'),
+  createStaff: (body: StaffInput) =>
+    request<TeamData>('/api/team', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateStaff: (id: number, body: Partial<StaffInput>) =>
+    request<TeamData>(`/api/team/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteStaff: (id: number) =>
+    request<TeamData>(`/api/team/${id}`, { method: 'DELETE' }),
 };

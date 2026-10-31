@@ -1,11 +1,12 @@
 # F&B OS
 
 Smart F&B micro-ERP for Egyptian restaurants and cafés. This repository contains
-**Phases 0–1** — an Arabic-first (RTL), calm Apple-style application shell with
-language/dark-mode switching, the store setup flow, an illustrative operations
-dashboard, and working **menu management** plus the **recipe builder** on top of
-an ingredient catalog. Later modules (POS, orders, customers, loyalty, reports,
-team) remain navigation destinations with explicit "coming soon" surfaces.
+**Phases 0–3** — an Arabic-first (RTL), calm Apple-style application shell with
+language/dark-mode switching and the store setup flow, plus working **menu
+management**, the **recipe builder**, the **POS and orders board**, the
+**customer book**, **reports** computed from real orders and the **team roster**.
+Loyalty and settings remain navigation destinations with explicit "coming soon"
+surfaces.
 
 ## What works
 
@@ -17,10 +18,20 @@ team) remain navigation destinations with explicit "coming soon" surfaces.
 - **Ingredients** (`/inventory`) — raw materials with unit, cost per unit and
   on-hand quantity; these costs drive every recipe. Used ingredients can't be
   deleted until removed from their recipes.
+- **POS & orders** (`/pos`, `/orders`) — build a ticket, send it to the kitchen,
+  then move it new → preparing → served on the live board.
+- **Customers** (`/customers`) — guest profiles with visits, lifetime spend and
+  order history. A ticket with a guest name adds that guest automatically.
+- **Reports** (`/reports`) — net sales, orders, average ticket, food cost and
+  margin for the last 7 or 30 days, top products, channel and payment splits,
+  and a CSV export.
+- **Team** (`/team`) — staff with roles (owner, manager, cashier, kitchen) and an
+  active toggle; the store always keeps one active owner.
 
 API: `/api/menu`, `/api/menu/categories`, `/api/menu/products`,
-`/api/menu/products/{id}/recipe`, `/api/ingredients` (interactive docs at
-http://localhost:8000/docs).
+`/api/menu/products/{id}/recipe`, `/api/ingredients`, `/api/pos`, `/api/orders`,
+`/api/customers`, `/api/reports`, `/api/reports/export.csv`, `/api/team`
+(interactive docs at http://localhost:8000/docs).
 
 ## Stack
 

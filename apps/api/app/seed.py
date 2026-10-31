@@ -2,9 +2,10 @@
 
 from datetime import date, datetime, timedelta
 
-from .db import Base, SessionLocal, engine
+from .db import Base, SessionLocal, engine, ensure_columns
 from .models import (
     ActivityRow,
+    Customer,
     DailyMetric,
     Ingredient,
     MenuCategory,
@@ -16,6 +17,7 @@ from .models import (
     RecipeLine,
     RevenuePoint,
     SetupTask,
+    Staff,
     Tenant,
 )
 
@@ -149,6 +151,23 @@ PRODUCTS = [
 
 
 # (channel, table, customer, status, payment, minutes ago, [(product_en, qty)])
+# Phase 3: the guest book and the team roster.
+CUSTOMERS = [
+    ("Mona", "0100 111 2233", "mona@example.com", "Prefers oat milk."),
+    ("Ahmed", "0101 222 3344", "ahmed@example.com", ""),
+    ("Sara", "0102 333 4455", "sara@example.com", "Allergic to nuts."),
+    ("Omar Khaled", "0103 444 5566", "omar@example.com", "Regular: Turkish coffee."),
+    ("Nour Ibrahim", "0104 555 6677", "", ""),
+]
+
+STAFF = [
+    ("Hassan Mahmoud", "0100 555 7788", "owner", True),
+    ("Dina Farouk", "0111 222 3344", "manager", True),
+    ("Youssef Adel", "0122 333 4455", "cashier", True),
+    ("Karim Nabil", "0109 888 7766", "kitchen", True),
+    ("Mariam Saleh", "0128 444 9900", "cashier", False),
+]
+
 DEMO_ORDERS = [
     ("dine_in", 7, "", "preparing", "cash", 24, [("Latte", 2), ("Cheesecake", 1)]),
     ("takeaway", None, "Mona", "new", "card", 6, [("Cappuccino", 1), ("Croissant", 2)]),
@@ -179,6 +198,7 @@ DEMO_ORDERS = [
 
 def seed() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_columns()
     db = SessionLocal()
     try:
         tenant = db.query(Tenant).first()
@@ -349,6 +369,32 @@ def seed() -> None:
                     )
                 )
 
+        # Guests and staff are matched by name so a partial seed completes.
+        if db.query(Customer).filter_by(tenant_id=tenant.id).count() == 0:
+            for name, phone, email, notes in CUSTOMERS:
+                db.add(
+                    Customer(
+                        tenant_id=tenant.id,
+                        name=name,
+                        phone=phone,
+                        email=email,
+                        notes=notes,
+                    )
+                )
+            db.flush()
+
+        if db.query(Staff).filter_by(tenant_id=tenant.id).count() == 0:
+            for name, phone, role, active in STAFF:
+                db.add(
+                    Staff(
+                        tenant_id=tenant.id,
+                        name=name,
+                        phone=phone,
+                        role=role,
+                        is_active=active,
+                    )
+                )
+
         if db.query(Order).filter_by(tenant_id=tenant.id).count() == 0:
             catalog = {
                 row.name_en: row
@@ -398,6 +444,20 @@ def seed() -> None:
                 for item in items:
                     item.order_id = order.id
                     db.add(item)
+
+        # Tickets placed before the guest book existed get their profile link.
+        known = {
+            row.name.lower(): row.id
+            for row in db.query(Customer).filter_by(tenant_id=tenant.id).all()
+        }
+        for order in (
+            db.query(Order)
+            .filter(Order.tenant_id == tenant.id, Order.customer_id == 0)
+            .all()
+        ):
+            customer_id = known.get(order.customer_name.strip().lower())
+            if customer_id:
+                order.customer_id = customer_id
 
         db.commit()
         print("seed: ok")

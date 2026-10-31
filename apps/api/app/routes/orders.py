@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import current_tenant
-from ..models import Order, OrderItem, Product, Tenant
+from ..models import Customer, Order, OrderItem, Product, Tenant
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -46,6 +46,7 @@ def serialize_order(order: Order, items: list[OrderItem]) -> dict:
         "number": order.number,
         "channel": order.channel,
         "table_no": order.table_no,
+        "customer_id": order.customer_id,
         "customer_name": order.customer_name,
         "status": order.status,
         "payment_method": order.payment_method,
@@ -86,6 +87,40 @@ def serialize_one(db: Session, order: Order) -> dict:
     return serialize_order(order, order_items(db, [order.id]).get(order.id, []))
 
 
+def resolve_customer(
+    db: Session, tenant: Tenant, customer_id: int, name: str
+) -> Customer | None:
+    """A named guest becomes a customer profile, so tickets build the CRM."""
+    if customer_id:
+        customer = (
+            db.query(Customer)
+            .filter(Customer.tenant_id == tenant.id, Customer.id == customer_id)
+            .first()
+        )
+        if customer is None:
+            raise HTTPException(
+                status_code=400, detail="This customer no longer exists."
+            )
+        return customer
+
+    cleaned = name.strip()
+    if not cleaned:
+        return None
+    customer = (
+        db.query(Customer)
+        .filter(
+            Customer.tenant_id == tenant.id,
+            func.lower(Customer.name) == cleaned.lower(),
+        )
+        .first()
+    )
+    if customer is None:
+        customer = Customer(tenant_id=tenant.id, name=cleaned)
+        db.add(customer)
+        db.flush()
+    return customer
+
+
 # ----------------------------------------------------------------- payloads
 
 
@@ -97,6 +132,7 @@ class OrderItemIn(BaseModel):
 class OrderIn(BaseModel):
     channel: Channel = "dine_in"
     table_no: int | None = Field(default=None, ge=1, le=999)
+    customer_id: int = Field(default=0, ge=0)
     customer_name: str = Field(default="", max_length=120)
     payment_method: Payment | None = None
     note: str = Field(default="", max_length=240)
@@ -153,13 +189,18 @@ def create_order(payload: OrderIn, db: Session = Depends(get_db)):
             detail=f"Not available right now: {', '.join(unavailable)}.",
         )
 
+    customer = resolve_customer(
+        db, tenant, payload.customer_id, payload.customer_name
+    )
+
     highest = db.query(func.max(Order.id)).filter_by(tenant_id=tenant.id).scalar()
     order = Order(
         tenant_id=tenant.id,
         number=str(1001 + (highest or 0)),
+        customer_id=customer.id if customer else 0,
         channel=payload.channel,
         table_no=payload.table_no if payload.channel == "dine_in" else None,
-        customer_name=payload.customer_name.strip(),
+        customer_name=customer.name if customer else "",
         status="new",
         payment_method=payload.payment_method,
         note=payload.note.strip(),

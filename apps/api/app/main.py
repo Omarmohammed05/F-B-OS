@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .db import Base, engine, get_db
+from .db import Base, engine, ensure_columns, get_db
 from .deps import current_tenant
 from .models import (
     ActivityRow,
@@ -17,10 +17,13 @@ from .models import (
     SetupTask,
     Tenant,
 )
+from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
 from .routes import menu as menu_routes
 from .routes import orders as order_routes
 from .routes import pos as pos_routes
+from .routes import reports as report_routes
+from .routes import team as team_routes
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -28,6 +31,7 @@ async def lifespan(_app: FastAPI):
     # uvicorn --reload restarts the API after a model edit, before the one-shot
     # `migrate` service (seed) has had a chance to run.
     Base.metadata.create_all(bind=engine)
+    ensure_columns()
     yield
 
 
@@ -51,6 +55,9 @@ app.include_router(menu_routes.router)
 app.include_router(inventory_routes.router)
 app.include_router(pos_routes.router)
 app.include_router(order_routes.router)
+app.include_router(customer_routes.router)
+app.include_router(report_routes.router)
+app.include_router(team_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

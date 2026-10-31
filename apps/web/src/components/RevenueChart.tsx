@@ -5,9 +5,15 @@ import { useLang } from '../lib/i18n';
 type Props = {
   points: { day: string; amount: number }[];
   currency: string;
+  /** Show every Nth day label; a 30-day range would otherwise truncate them. */
+  labelEvery?: number;
 };
 
-export default function RevenueChart({ points, currency }: Props) {
+export default function RevenueChart({
+  points,
+  currency,
+  labelEvery = 1,
+}: Props) {
   const { t, lang, dir } = useLang();
   const [selected, setSelected] = useState(points.length - 1);
 
@@ -92,11 +98,14 @@ export default function RevenueChart({ points, currency }: Props) {
       </div>
 
       <div className="mt-2 flex gap-2 border-t border-line pt-2 sm:gap-3">
-        {points.map((point, index) => (
+        {(labelEvery > 1
+          ? points.filter((_, index) => index % labelEvery === 0)
+          : points
+        ).map((point) => (
           <span
             key={point.day}
             className={`flex-1 truncate text-center text-[11px] ${
-              index === Math.min(selected, points.length - 1)
+              point.day === current.day
                 ? 'font-semibold text-ink'
                 : 'text-ink-2'
             }`}

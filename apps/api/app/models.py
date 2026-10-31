@@ -146,6 +146,32 @@ class RecipeLine(Base):
     qty: Mapped[float] = mapped_column(Float, default=0)
 
 
+class Customer(Base):
+    """A guest profile. Orders keep a plain customer_id so deleting is safe."""
+
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    email: Mapped[str] = mapped_column(String(160), default="")
+    notes: Mapped[str] = mapped_column(String(240), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Staff(Base):
+    __tablename__ = "staff"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    role: Mapped[str] = mapped_column(String(16), default="cashier")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Order(Base):
     """A POS order. Column names (status/channel/payment) are the contract."""
 
@@ -154,6 +180,7 @@ class Order(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
     number: Mapped[str] = mapped_column(String(12))
+    customer_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
     channel: Mapped[str] = mapped_column(String(16), default="dine_in")
     table_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     customer_name: Mapped[str] = mapped_column(String(120), default="")
