@@ -12,7 +12,7 @@ from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .. import audit, auth
@@ -498,6 +498,21 @@ def invite_restaurant(
 def purge_restaurant(db: Session, tenant: Tenant) -> dict:
     """Delete the restaurant and every row that belongs to it, children first."""
     removed: dict[str, int] = {}
+    # A session belongs to a restaurant and to whoever signed in. When the
+    # platform account moved between restaurants the two no longer have to
+    # agree, and a session left behind by one of this restaurant's accounts
+    # would block deleting that account below.
+    staff_ids = [
+        row.id for row in db.query(Staff.id).filter(Staff.tenant_id == tenant.id)
+    ]
+    sessions = AuthSession.tenant_id == tenant.id
+    if staff_ids:
+        sessions = or_(sessions, AuthSession.staff_id.in_(staff_ids))
+    count = (
+        db.query(AuthSession).filter(sessions).delete(synchronize_session=False)
+    )
+    if count:
+        removed["auth_sessions"] = count
     for table in reversed(Base.metadata.sorted_tables):
         if table.name == "tenants" or "tenant_id" not in table.c:
             continue

@@ -14,7 +14,7 @@ Run inside the api container:
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import text
 
@@ -325,6 +325,59 @@ def test_the_platform_account_moves_off_a_removed_home(client):
         db.expire_all()
         if db.query(Tenant).filter_by(id=tenant_id).count():
             drop_restaurant(db, 0, tenant_id)
+        db.close()
+
+
+def test_purging_a_restaurant_clears_the_sessions_of_its_accounts(client):
+    """A session filed under another restaurant must not block the erase.
+
+    A session carries both the restaurant and the account. Once the platform
+    account has moved between restaurants the two can disagree, so the purge
+    takes an account's sessions with it either way — otherwise the staff row
+    fails to delete and the erase comes back as a database error.
+    """
+    name = scratch("Purge")
+    username = scratch("purge")
+    created = client.post(
+        "/api/restaurants",
+        json={
+            "name_ar": name,
+            "name_en": name,
+            "admin_name": "Purge Admin",
+            "admin_username": username,
+            "admin_password": "sufra1234",
+        },
+    )
+    assert created.status_code == 201, created.text
+    restaurant = next(
+        row for row in created.json()["restaurants"] if row["name_en"] == name
+    )
+    tenant_id = restaurant["id"]
+    admin_id = restaurant["admin"]["id"]
+    db = SessionLocal()
+    try:
+        # The same account, but its session is filed under the owner's store.
+        db.add(
+            AuthSession(
+                tenant_id=client.get("/api/restaurants").json()["owner_tenant_id"],
+                staff_id=admin_id,
+                token_hash=scratch("token"),
+                expires_at=datetime(2100, 1, 1),
+            )
+        )
+        db.commit()
+
+        gone = client.delete(f"/api/restaurants/{tenant_id}?keep_data=false")
+        assert gone.status_code == 200, gone.text
+
+        db.expire_all()
+        assert db.get(Staff, admin_id) is None
+        assert db.query(AuthSession).filter_by(staff_id=admin_id).count() == 0
+    finally:
+        set_request_tenant(None)
+        db.expire_all()
+        if db.query(Tenant).filter_by(id=tenant_id).count():
+            drop_restaurant(db, admin_id, tenant_id)
         db.close()
 
 
