@@ -1,5 +1,6 @@
 import { Ban, Link2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DeleteRestaurantDialog from '../components/platform/DeleteRestaurantDialog';
 import InviteLinkDialog from '../components/platform/InviteLinkDialog';
 import RestaurantDialog from '../components/platform/RestaurantDialog';
@@ -56,6 +57,15 @@ export default function RestaurantsPage() {
     null,
   );
   const [busyId, setBusyId] = useState<number | null>(null);
+  // `/restaurants?new=1` is the overview's shortcut: it opens the create sheet.
+  const [search] = useSearchParams();
+
+  useEffect(() => {
+    if (search.get('new') === '1') {
+      setEditing(null);
+      setDialogOpen(true);
+    }
+  }, [search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +92,13 @@ export default function RestaurantsPage() {
 
   const nameOf = (row: PlatformRestaurant) =>
     lang === 'ar' ? row.name_ar : row.name_en;
+
+  /** The platform account sits in one restaurant; it only becomes untouchable
+   * when there is nowhere else to move it to. */
+  const openCount = (data?.restaurants ?? []).filter((row) => !row.is_deleted)
+    .length;
+  const isStuck = (row: PlatformRestaurant) =>
+    row.id === data?.owner_tenant_id && openCount < 2;
 
   /** A create answers with the new row, so its activation link opens at once. */
   const applySaved = (next: RestaurantsData) => {
@@ -275,12 +292,9 @@ export default function RestaurantsPage() {
                         <button
                           type="button"
                           onClick={() => toggleBlock(row)}
-                          disabled={
-                            busyId === row.id ||
-                            row.id === data.owner_tenant_id
-                          }
+                          disabled={busyId === row.id || isStuck(row)}
                           title={
-                            row.id === data.owner_tenant_id
+                            isStuck(row)
                               ? t('platform.ownRestaurantHint')
                               : undefined
                           }
@@ -306,10 +320,10 @@ export default function RestaurantsPage() {
                       <button
                         type="button"
                         onClick={() => setDeleting(row)}
-                        disabled={row.id === data.owner_tenant_id}
+                        disabled={isStuck(row)}
                         aria-label={`${t('platform.delete')} — ${nameOf(row)}`}
                         title={
-                          row.id === data.owner_tenant_id
+                          isStuck(row)
                             ? t('platform.ownRestaurantHint')
                             : undefined
                         }

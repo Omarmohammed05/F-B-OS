@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import type { Branch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
-import { NAV_GROUPS } from '../lib/nav';
+import { navGroupsFor } from '../lib/nav';
 import { isOwner, ROLE_LABEL_KEY } from '../lib/roles';
 import { useTheme } from '../lib/theme';
 import BranchMenu from './BranchMenu';
@@ -37,15 +37,18 @@ export default function Sidebar({
         </span>
       </div>
 
-      <BranchMenu
-        storeName={storeName}
-        branches={branches}
-        activeId={activeBranchId}
-        onNavigate={onNavigate}
-      />
+      {/* The owner runs the platform, not a location: no store switcher. */}
+      {owner ? null : (
+        <BranchMenu
+          storeName={storeName}
+          branches={branches}
+          activeId={activeBranchId}
+          onNavigate={onNavigate}
+        />
+      )}
 
       <nav className="flex flex-col gap-4">
-        {NAV_GROUPS.filter((group) => !group.ownerOnly || owner).map((group) => (
+        {navGroupsFor(owner).map((group) => (
           <div key={group.labelKey}>
             <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-2">
               {t(group.labelKey)}
@@ -77,7 +80,9 @@ export default function Sidebar({
       </nav>
 
       <div className="mt-auto flex flex-col gap-3 pt-2">
-        <SetupCard completed={setup.completed} total={setup.total} />
+        {owner ? null : (
+          <SetupCard completed={setup.completed} total={setup.total} />
+        )}
 
         <div className="flex items-center gap-2">
           <div className="flex flex-1 rounded-field border border-line bg-surface-2 p-0.5">

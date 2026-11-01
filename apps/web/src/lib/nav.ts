@@ -37,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
     labelKey: 'nav.group.platform',
     ownerOnly: true,
     items: [
+      { to: '/platform', labelKey: 'nav.overview', icon: LayoutDashboard },
       { to: '/restaurants', labelKey: 'nav.restaurants', icon: Building2 },
       { to: '/income', labelKey: 'nav.income', icon: Wallet },
     ],
@@ -85,3 +86,22 @@ export const TAB_ITEMS: NavItem[] = [
   { to: '/menu', labelKey: 'nav.menu', icon: UtensilsCrossed },
   { to: '/settings', labelKey: 'nav.settings', icon: SlidersHorizontal },
 ];
+
+/**
+ * The platform owner runs no restaurant shift, so the till, the board and the
+ * roster are noise on their screen: they get the platform screens only.
+ */
+export const OWNER_TAB_ITEMS: NavItem[] = [
+  { to: '/platform', labelKey: 'nav.overview', icon: LayoutDashboard },
+  { to: '/restaurants', labelKey: 'nav.restaurants', icon: Building2 },
+  { to: '/income', labelKey: 'nav.income', icon: Wallet },
+];
+
+/** The groups a role may see: the platform owner sees the platform, nobody else. */
+export function navGroupsFor(owner: boolean): NavGroup[] {
+  return NAV_GROUPS.filter((group) => Boolean(group.ownerOnly) === owner);
+}
+
+export function tabItemsFor(owner: boolean): NavItem[] {
+  return owner ? OWNER_TAB_ITEMS : TAB_ITEMS;
+}

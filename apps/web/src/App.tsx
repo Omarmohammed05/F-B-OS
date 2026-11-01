@@ -1,8 +1,9 @@
 import { Route, Routes } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import RequireAuth from './components/RequireAuth';
-import { AuthProvider } from './lib/auth';
+import { AuthProvider, useAuth } from './lib/auth';
 import { AppDataProvider } from './lib/store';
+import { isOwner } from './lib/roles';
 import OwnerOnly from './components/OwnerOnly';
 import ActivatePage from './pages/ActivatePage';
 import AttendancePage from './pages/AttendancePage';
@@ -17,6 +18,7 @@ import MenuPage from './pages/MenuPage';
 import NotFound from './pages/NotFound';
 import OnboardingPage from './pages/OnboardingPage';
 import OrdersPage from './pages/OrdersPage';
+import PlatformPage from './pages/PlatformPage';
 import PosPage from './pages/PosPage';
 import RecipePage from './pages/RecipePage';
 import ReportsPage from './pages/ReportsPage';
@@ -24,6 +26,15 @@ import RestaurantsPage from './pages/RestaurantsPage';
 import SettingsPage from './pages/SettingsPage';
 import SetupPage from './pages/SetupPage';
 import TeamPage from './pages/TeamPage';
+
+/**
+ * `/` is whoever's home: the platform owner opens the restaurants, a
+ * restaurant's people open their own dashboard.
+ */
+function Home() {
+  const { user } = useAuth();
+  return isOwner(user?.role) ? <PlatformPage /> : <Dashboard />;
+}
 
 export default function App() {
   return (
@@ -42,7 +53,15 @@ export default function App() {
               </AppDataProvider>
             }
           >
-            {/* The platform owner's own screens: restaurants and income. */}
+            {/* The platform owner's own screens: overview, restaurants, income. */}
+            <Route
+              path="platform"
+              element={
+                <OwnerOnly>
+                  <PlatformPage />
+                </OwnerOnly>
+              }
+            />
             <Route
               path="restaurants"
               element={

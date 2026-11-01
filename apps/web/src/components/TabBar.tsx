@@ -1,14 +1,17 @@
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
-import { TAB_ITEMS } from '../lib/nav';
+import { tabItemsFor } from '../lib/nav';
+import { isOwner } from '../lib/roles';
 
 export default function TabBar() {
   const { t } = useLang();
+  const { user } = useAuth();
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
       <ul className="flex items-stretch">
-        {TAB_ITEMS.map((item) => {
+        {tabItemsFor(isOwner(user?.role)).map((item) => {
           const Icon = item.icon;
           return (
             <li key={item.to} className="flex-1">

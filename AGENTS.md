@@ -35,6 +35,7 @@ curl -s localhost:3000/api/orders | head -c 200           # live tickets
 curl -s localhost:3000/api/customers | head -c 200        # guest book + derived stats
 curl -s "localhost:3000/api/reports?days=7" | head -c 200 # sales / food cost
 curl -s localhost:3000/api/team | head -c 200             # staff roster
+curl -s localhost:3000/api/platform/overview | head -c 200 # owner's home screen
 curl -s localhost:3000/api/branches | head -c 200         # locations + active one
 curl -s localhost:3000/api/settings | head -c 200         # store profile + tables
 curl -s localhost:3000/api/loyalty | head -c 200          # program + member cards
@@ -733,8 +734,17 @@ service.
   admin_password?}` opens one (**409** when the English name is taken) and can
   create its first admin in the same step; `PATCH /{id}` edits the names and
   `software_price`; `POST /{id}/block` `{blocked}` and `DELETE /{id}?keep_data=…`
-  both answer **409** on the owner's own restaurant. Blocking drops every session
-  in that restaurant, so nobody there stays signed in; `keep_data=true` archives it
+  reach **every** restaurant, including the one the owner's own account sits in
+  (`owner_tenant_id`). That account is a staff row inside a restaurant, so
+  closing its restaurant would close the account with it: `move_home()` first
+  moves the staff row **and its sessions** to the lowest-id open restaurant and
+  returns that store to the caller. Only when nothing else is open do both
+  answer **409** (`NO_OTHER_HOME`: open another restaurant first). `move_home()`
+  calls `db.flush()` before returning — the session's autoflush is off and
+  `purge_restaurant` deletes rows with raw SQL, so an unflushed move let the purge
+  delete the owner's own staff row and fail on the session FK.
+  Blocking drops every session in that restaurant, so nobody there stays signed
+  in; `keep_data=true` archives it
   (rows kept for the books) and `false` erases it with every row carrying its
   `tenant_id`. A new restaurant starts with no branch, menu, guests or setup tasks
   — every page already renders that state — and copies `currency`, `tax_rate` and
@@ -756,7 +766,9 @@ service.
   rendered outside the shell); the owner copies the link from
   `components/platform/InviteLinkDialog.tsx`.
 - The owner's own row (`owner_tenant_id`) hides the invite button and disables
-  block and remove — the API answers **409** on both. Those dialogs used to print
+  block and remove **only while it is the last open restaurant** (`platform.
+  ownRestaurantHint` says so); with a second one open both buttons work and the
+  account moves across. Those dialogs used to print
   "that restaurant could not be removed" for it because `String(new Error(...))`
   starts with `Error: `, never with the status: read `err.message`. Fixed in
   `RestaurantDialog` and `DeleteRestaurantDialog` (no other caller has that bug).
@@ -784,6 +796,25 @@ service.
   an empty page (the API answers 403 anyway). `/team` is the restaurant admin's
   place now: it lists the roster and hides every control unless
   `canManageStore(role)` (admin or owner) — it no longer creates restaurants.
+- **The owner sees the platform, not a shift.** `navGroupsFor(owner)` and
+  `nav.tabItemsFor(owner)` decide it: the owner gets `/platform` (overview),
+  `/restaurants` and `/income` only — no till, orders, menu, checklist,
+  attendance, stock, guests, loyalty, reports, team or settings, no branch
+  switcher, no setup card, no bell and no POS shortcut (`Sidebar`, `TabBar`,
+  `Topbar`). `/` renders `PlatformPage` for the owner and `Dashboard` for
+  everyone else (`App.tsx`). Hiding is navigation only: the API still accepts the
+  owner everywhere (`require_admin` outranks a restaurant's admin), so a typed URL
+  works — the point was their screen, not a new permission.
+- `/platform` (`pages/PlatformPage.tsx`, `GET /api/platform/overview`,
+  `require_owner`) is the owner's home: four figures (restaurants + active,
+  waiting for activation, billed monthly, unpaid this month), then **waiting for
+  activation** (a copy-link button per row), **not paid this month** (a link to
+  `/income`) and **recent platform activity** — the newest eight `audit_logs` rows
+  whose action is in `platform.PLATFORM_ACTIONS` (the restaurant lifecycle and
+  software payments, never a restaurant's own tickets). "Pending" skips
+  `owner_tenant_id`: the platform's own seat is not a customer awaiting handover.
+  Both lists are derived from `restaurants_payload`, so they can never disagree
+  with `/restaurants`.
 - The payment amount fields are `step="any"`: a real transfer is often not a round
   number, and `step={50}` made the browser refuse a 4,321 payment with its own
   English validity tooltip before the form was ever submitted.
@@ -793,6 +824,10 @@ service.
   (`keep_data=false`), which deletes the rows it created. Tests:
   `apps/api/tests/test_restaurants.py` create their own staff, sessions, audit rows
   and tenant and remove them again.
+- `test_the_platform_account_moves_off_a_removed_home` parks the seeded owner in a
+  scratch restaurant, removes that restaurant over HTTP and asserts the account
+  came back to the seeded store; a `finally` puts `staff.tenant_id` and the
+  account's sessions back, so the suite leaves the owner where the seed put it.
 
 ## Attendance (who is on the floor)
 

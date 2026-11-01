@@ -389,6 +389,31 @@ export type RestaurantsData = {
   created_id?: number;
 };
 
+/** The owner's home screen: the platform's own numbers, never a store's. */
+export type PlatformOverview = {
+  summary: RestaurantsData['summary'] & {
+    /** Restaurants nobody has activated yet. */
+    pending: number;
+    /** Restaurants billed this month that have paid nothing. */
+    unpaid: number;
+    unpaid_amount: number;
+  };
+  pending: PlatformRestaurant[];
+  unpaid: PlatformRestaurant[];
+  activity: {
+    id: number;
+    action: string;
+    entity: string;
+    entity_id: number;
+    detail: string;
+    actor: string;
+    at: string | null;
+  }[];
+  currency: string;
+  month: string;
+  owner_tenant_id: number;
+};
+
 export type InviteInfo = {
   restaurant_ar: string;
   restaurant_en: string;
@@ -871,6 +896,7 @@ export const api = {
     return request<TeamData>(query ? `/api/team?${query}` : '/api/team');
   },
   restaurants: () => request<RestaurantsData>('/api/restaurants'),
+  platformOverview: () => request<PlatformOverview>('/api/platform/overview'),
   createRestaurant: (body: RestaurantCreateInput) =>
     request<RestaurantsData>('/api/restaurants', {
       method: 'POST',

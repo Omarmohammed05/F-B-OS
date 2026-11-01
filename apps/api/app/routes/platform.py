@@ -19,6 +19,7 @@ from .. import audit, auth
 from ..db import Base, get_db
 from ..deps import current_tenant
 from ..models import (
+    AuditLog,
     AuthSession,
     Order,
     RestaurantInvite,
@@ -32,6 +33,28 @@ from .team import MIN_PASSWORD, USERNAME_PATTERN, new_credentials
 router = APIRouter(prefix="/api", tags=["platform"])
 
 ROLE_ADMIN = "admin"
+
+# The one thing that still stops a block or a removal: the platform account has
+# nowhere to sit, so closing the last open restaurant would close the platform
+# with it.
+NO_OTHER_HOME = (
+    "Open another restaurant first: the platform account sits in this one and "
+    "needs somewhere to live."
+)
+
+# What the owner's overview calls "recent activity" — the restaurant lifecycle
+# and the money collected for the software, never a restaurant's own tickets.
+PLATFORM_ACTIONS = (
+    "restaurant.create",
+    "restaurant.update",
+    "restaurant.block",
+    "restaurant.unblock",
+    "restaurant.delete",
+    "restaurant.invite",
+    "restaurant.activate",
+    "software.payment",
+    "software.payment.delete",
+)
 
 
 def month_start(today: date | None = None) -> date:
@@ -266,6 +289,40 @@ def unique_name(db: Session, name_en: str, exclude_id: int = 0) -> None:
         )
 
 
+def live_restaurants(db: Session, exclude_id: int = 0):
+    """Every restaurant that is still open, oldest first."""
+    query = db.query(Tenant).filter(
+        Tenant.is_deleted.is_(False), Tenant.is_blocked.is_(False)
+    )
+    if exclude_id:
+        query = query.filter(Tenant.id != exclude_id)
+    return query.order_by(Tenant.id)
+
+
+def move_home(db: Session, user: Staff, leaving_id: int) -> bool:
+    """Move the platform account out of a restaurant that is about to close.
+
+    The owner's account is a staff row inside one restaurant, so closing that
+    restaurant would close the account with it — that is the only reason the
+    store a sign-in came from used to be untouchable. When another open
+    restaurant is left, the account and its sessions move there first, which
+    lets the owner remove every restaurant on the list.
+    """
+    if user.tenant_id != leaving_id:
+        return True
+    target = live_restaurants(db, leaving_id).first()
+    if target is None:
+        return False
+    user.tenant_id = target.id
+    # The session's autoflush is off and a removal deletes rows with raw SQL, so
+    # the moved staff row has to reach the database before anything purges it.
+    db.flush()
+    db.query(AuthSession).filter(AuthSession.staff_id == user.id).update(
+        {"tenant_id": target.id}, synchronize_session=False
+    )
+    return True
+
+
 @router.get("/restaurants")
 def list_restaurants(
     user: Staff = Depends(auth.require_owner), db: Session = Depends(get_db)
@@ -391,11 +448,8 @@ def block_restaurant(
     db: Session = Depends(get_db),
 ):
     row = get_restaurant(db, restaurant_id)
-    if row.id == user.tenant_id and payload.blocked:
-        raise HTTPException(
-            status_code=409,
-            detail="You cannot block the restaurant you are signed in to.",
-        )
+    if payload.blocked and not move_home(db, user, row.id):
+        raise HTTPException(status_code=409, detail=NO_OTHER_HOME)
     row.is_blocked = payload.blocked
     if payload.blocked:
         # A blocked restaurant is off the air at once: nobody in it keeps a
@@ -473,11 +527,8 @@ def delete_restaurant(
     the restaurant and all of its rows.
     """
     row = get_restaurant(db, restaurant_id)
-    if row.id == user.tenant_id:
-        raise HTTPException(
-            status_code=409,
-            detail="You cannot remove the restaurant you are signed in to.",
-        )
+    if not move_home(db, user, row.id):
+        raise HTTPException(status_code=409, detail=NO_OTHER_HOME)
     if keep_data:
         row.is_deleted = True
         row.is_blocked = True
@@ -566,6 +617,54 @@ def delete_payment(
     db.delete(payment)
     db.commit()
     return income_payload(db, 6)
+
+
+@router.get("/platform/overview")
+def overview(
+    user: Staff = Depends(auth.require_owner), db: Session = Depends(get_db)
+):
+    """The owner's home screen: what needs a decision today.
+
+    Two lists the restaurants table cannot answer at a glance — restaurants
+    nobody has activated yet, and restaurants that have paid nothing this month
+    — plus the newest entries of the platform's own trail.
+    """
+    payload = restaurants_payload(db, user)
+    rows = payload["restaurants"]
+    live = [row for row in rows if not row["is_deleted"]]
+
+    # The platform account's own seat is not a customer waiting for a handover.
+    pending = [
+        row
+        for row in live
+        if row["admin"] is None and row["id"] != payload["owner_tenant_id"]
+    ]
+    unpaid = [
+        row
+        for row in live
+        if not row["is_blocked"] and row["software_price"] > 0 and row["income_month"] <= 0
+    ]
+    activity = (
+        db.query(AuditLog)
+        .filter(AuditLog.action.in_(PLATFORM_ACTIONS))
+        .order_by(AuditLog.id.desc())
+        .limit(8)
+        .all()
+    )
+    return {
+        "summary": {
+            **payload["summary"],
+            "pending": len(pending),
+            "unpaid": len(unpaid),
+            "unpaid_amount": round(sum(row["software_price"] for row in unpaid), 2),
+        },
+        "pending": pending,
+        "unpaid": unpaid,
+        "activity": audit.serialize(activity),
+        "currency": payload["currency"],
+        "month": payload["month"],
+        "owner_tenant_id": payload["owner_tenant_id"],
+    }
 
 
 @router.get("/income")

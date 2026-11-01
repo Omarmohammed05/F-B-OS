@@ -20,7 +20,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.deps import set_request_tenant
-from app.models import SoftwarePayment, Staff, Tenant
+from app.models import AuthSession, SoftwarePayment, Staff, Tenant
 
 # A caller address of its own, so the sign-in budget of the other suites is
 # never spent here.
@@ -276,6 +276,55 @@ def test_archiving_keeps_the_history(client):
         db.expire_all()
         assert db.query(Tenant).filter_by(id=tenant_id).count() == 1
         drop_restaurant(db, 0, tenant_id)
+        db.close()
+
+
+def test_the_platform_account_moves_off_a_removed_home(client):
+    """The owner can remove the restaurant their own account sits in.
+
+    The platform account is a staff row inside one restaurant, so the store it
+    was seeded in used to be untouchable. With another restaurant open the
+    account moves there first, which is what makes every row removable.
+    """
+    db = SessionLocal()
+    owner = db.query(Staff).filter(Staff.role == "owner").first()
+    home_id = owner.tenant_id
+    owner_id = owner.id
+    db.close()
+
+    name = scratch("Home")
+    created = client.post("/api/restaurants", json={"name_ar": name, "name_en": name})
+    tenant_id = next(
+        row["id"] for row in created.json()["restaurants"] if row["name_en"] == name
+    )
+    db = SessionLocal()
+    try:
+        # Sit the platform account in the scratch restaurant, as a seed of that
+        # store would leave it.
+        owner = db.get(Staff, owner_id)
+        owner.tenant_id = tenant_id
+        db.query(AuthSession).filter(AuthSession.staff_id == owner_id).update(
+            {"tenant_id": tenant_id}, synchronize_session=False
+        )
+        db.commit()
+
+        removed = client.delete(f"/api/restaurants/{tenant_id}?keep_data=false")
+        assert removed.status_code == 200, removed.text
+        db.expire_all()
+        assert db.get(Staff, owner_id).tenant_id == home_id
+    finally:
+        db.expire_all()
+        owner = db.get(Staff, owner_id)
+        if owner is not None and owner.tenant_id != home_id:
+            owner.tenant_id = home_id
+            db.query(AuthSession).filter(AuthSession.staff_id == owner_id).update(
+                {"tenant_id": home_id}, synchronize_session=False
+            )
+            db.commit()
+        set_request_tenant(None)
+        db.expire_all()
+        if db.query(Tenant).filter_by(id=tenant_id).count():
+            drop_restaurant(db, 0, tenant_id)
         db.close()
 
 

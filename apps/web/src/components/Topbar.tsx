@@ -1,6 +1,8 @@
 import { Menu, Moon, Search, Sun } from 'lucide-react';
 import { useState } from 'react';
+import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
+import { isOwner } from '../lib/roles';
 import { useTheme } from '../lib/theme';
 import NotificationsMenu from './NotificationsMenu';
 import UserMenu from './UserMenu';
@@ -13,7 +15,9 @@ type Props = {
 export default function Topbar({ onOpenMenu, onOpenPos }: Props) {
   const { t, lang, toggleLang } = useLang();
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
+  const owner = isOwner(user?.role);
 
   return (
     <header className="glass sticky top-0 z-30 border-b border-line">
@@ -59,15 +63,18 @@ export default function Topbar({ onOpenMenu, onOpenPos }: Props) {
           >
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <NotificationsMenu />
+          {/* The owner never rings up a ticket: the till shortcut is noise. */}
+          {owner ? null : <NotificationsMenu />}
           <UserMenu />
-          <button
-            type="button"
-            onClick={onOpenPos}
-            className="btn-primary hidden sm:inline-flex"
-          >
-            {t('top.openPos')}
-          </button>
+          {owner ? null : (
+            <button
+              type="button"
+              onClick={onOpenPos}
+              className="btn-primary hidden sm:inline-flex"
+            >
+              {t('top.openPos')}
+            </button>
+          )}
         </div>
       </div>
     </header>
