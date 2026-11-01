@@ -73,6 +73,11 @@ service.
   (passed bare in compose), plus a `.${BASE44_SANDBOX_HOST_DOMAIN}` allowlist in
   `vite.config.ts` that applies **only** when `BASE44_PREVIEW_MODE === "1"`.
   Unset, Vite's default host checks apply.
+- Postgres has exactly one role: `fbos` (database `fbos`, password
+  `fbos_dev_password`). Ad-hoc `psql` must pass it — `docker compose -f
+  docker-compose.base44.yml exec db psql -U fbos -d fbos` — because the usual
+  defaults (`postgres`, or the product name `sufra`) do not exist here and each
+  attempt logs a `FATAL: role "..." does not exist` line into `db`'s log.
 - Accent color is tenant data (`tenants.accent_color`, default `#0A84FF`), applied
   to `--accent` at runtime after `/api/dashboard` loads. Language and theme live in
   `localStorage` (`fbos.lang`, `fbos.theme`); Arabic RTL is the default.
