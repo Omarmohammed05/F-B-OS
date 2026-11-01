@@ -320,6 +320,48 @@ export type SettingsInput = {
   table_count: number;
 };
 
+export type LoyaltyTier = 'bronze' | 'silver' | 'gold';
+
+export type LoyaltyProgram = {
+  is_active: boolean;
+  stamps_target: number;
+  points_per_currency: number;
+  reward_ar: string;
+  reward_en: string;
+};
+
+export type LoyaltyCard = {
+  id: number;
+  customer_id: number;
+  name: string;
+  phone: string;
+  stamps: number;
+  stamps_target: number;
+  points: number;
+  tier: LoyaltyTier;
+  next_tier: { tier: LoyaltyTier; points: number } | null;
+  rewards_redeemed: number;
+  reward_ready: boolean;
+  visits: number;
+  spend: number;
+  joined_at: string | null;
+  last_stamp_at: string | null;
+};
+
+export type LoyaltyData = {
+  program: LoyaltyProgram;
+  cards: LoyaltyCard[];
+  available: { id: number; name: string; phone: string }[];
+  summary: {
+    members: number;
+    stamps_in_progress: number;
+    rewards_ready: number;
+    rewards_redeemed: number;
+    points: number;
+    tiers: Record<LoyaltyTier, number>;
+  };
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -444,6 +486,24 @@ export const api = {
   settings: () => request<SettingsData>('/api/settings'),
   updateSettings: (body: SettingsInput) =>
     request<SettingsData>('/api/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  loyalty: () => request<LoyaltyData>('/api/loyalty'),
+  enrollLoyaltyCard: (customerId: number) =>
+    request<LoyaltyData>('/api/loyalty/cards', {
+      method: 'POST',
+      body: JSON.stringify({ customer_id: customerId }),
+    }),
+  removeLoyaltyCard: (id: number) =>
+    request<LoyaltyData>(`/api/loyalty/cards/${id}`, { method: 'DELETE' }),
+  stampLoyaltyCard: (id: number) =>
+    request<LoyaltyData>(`/api/loyalty/cards/${id}/stamp`, { method: 'POST' }),
+  redeemLoyaltyCard: (id: number) =>
+    request<LoyaltyData>(`/api/loyalty/cards/${id}/redeem`, { method: 'POST' }),
+  updateLoyaltyProgram: (body: Partial<LoyaltyProgram>) =>
+    request<LoyaltyData>('/api/loyalty/program', {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

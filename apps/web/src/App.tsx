@@ -4,8 +4,8 @@ import { AppDataProvider } from './lib/store';
 import CustomersPage from './pages/CustomersPage';
 import Dashboard from './pages/Dashboard';
 import InventoryPage from './pages/InventoryPage';
+import LoyaltyPage from './pages/LoyaltyPage';
 import MenuPage from './pages/MenuPage';
-import ModulePage from './pages/ModulePage';
 import NotFound from './pages/NotFound';
 import OrdersPage from './pages/OrdersPage';
 import PosPage from './pages/PosPage';
@@ -28,10 +28,10 @@ export default function App() {
           <Route path="menu/:productId/recipe" element={<RecipePage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="customers" element={<CustomersPage />} />
+          <Route path="loyalty" element={<LoyaltyPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="settings" element={<SettingsPage />} />
-          <Route path=":module" element={<ModulePage />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

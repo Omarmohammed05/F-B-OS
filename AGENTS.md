@@ -1,9 +1,10 @@
 # AGENTS.md — F&B OS
 
-Phase 5: foundation, menu management, the recipe builder, the POS, the orders
-board, the customer book, real reports, the team roster, a live dashboard and the
-store settings surface are working features. Loyalty is the only remaining
-placeholder surface (`ModulePage`) — do not present it as working.
+Phases 0–6: foundation, menu management, the recipe builder, the POS, the orders
+board, the customer book, real reports, the team roster, a live dashboard, the
+store settings surface and loyalty stamp cards are all working features. Every
+navigation destination now has a real page, so the old `ModulePage` placeholder
+and `lib/modules.ts` are gone — a URL that matches no route renders `NotFound`.
 
 ## Run and verify
 
@@ -19,6 +20,7 @@ curl -s localhost:3000/api/customers | head -c 200        # guest book + derived
 curl -s "localhost:3000/api/reports?days=7" | head -c 200 # sales / food cost
 curl -s localhost:3000/api/team | head -c 200             # staff roster
 curl -s localhost:3000/api/settings | head -c 200         # store profile + tables
+curl -s localhost:3000/api/loyalty | head -c 200          # program + member cards
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
 ```
@@ -213,11 +215,52 @@ service.
   the table count feeds the POS picker and the dashboard available count.
 - UI route: `/settings` (`SettingsPage.tsx`) — profile, accent swatches, currency,
   tax and tables in three cards with a sticky save bar (Save / Discard plus the
-  unsaved, saved and 409 states). `modules.ts`/`ModulePage` no longer list
-  settings; loyalty (`/loyalty`, phase 6) is the last placeholder.
+  unsaved, saved and 409 states).
 - The accent swatches are the six presets in `SettingsPage.tsx`. A tenant whose hex
   is not in that list still renders (no swatch selected) and saves it back
   unchanged; there is no free-form color input.
 - Verify by saving and reading back: change the table count and accent, save,
   confirm `--accent` and the sidebar name, then walk the same form back to the
   original values. Leave the tenant row exactly as the seed wrote it.
+
+## Phase 6: loyalty stamp cards
+
+- Tables: `loyalty_programs` (one row per store) and `loyalty_cards` (one row per
+  enrolled guest). Both are new tables, so plain `create_all` covers them; there
+  is no `ADDITIVE_COLUMNS` entry. `python -m app.seed` creates the program row and
+  enrolls four of the five seeded guests (Omar Khaled stays un-enrolled so the
+  enroll control is visible).
+- **Points are derived, never stored**: `round(lifetime net total of the guest's
+  non-cancelled orders × program.points_per_currency)`. Editing the points rate or
+  a ticket immediately changes every card, exactly like the guest stats on
+  `/customers`. Only `stamps` and `rewards_redeemed` are transactional state.
+- Tiers come from lifetime points (`apps/api/app/loyalty.py`): bronze < 200,
+  silver 200–499, gold ≥ 500. `next_tier` says how many points are still missing;
+  it is `null` at gold.
+- `apps/api/app/loyalty.py` is the domain module (tiers, program lookup, stamp
+  award, payload) and imports models only on purpose: `routes/orders.py` imports
+  `award_stamp` from it, and importing a router there would close a cycle
+  (`customers → orders`). `routes/loyalty.py` only holds the HTTP endpoints.
+- A ticket that moves to **served** adds one stamp to its guest's card when the
+  guest is enrolled and the program is active; a full card stops at the target and
+  waits for a redemption. Stamping is the visit, so it happens on `served` only —
+  a cancelled ticket never awards anything.
+- Endpoints: `GET /api/loyalty`, `POST /api/loyalty/cards` (`{customer_id}`, 409 if
+  already enrolled, 404 for an unknown guest), `DELETE /api/loyalty/cards/{id}`,
+  `POST /api/loyalty/cards/{id}/stamp` (409 when the card is already full),
+  `POST /api/loyalty/cards/{id}/redeem` (409 when it is not full; resets stamps to
+  0 and increments `rewards_redeemed`) and `PATCH /api/loyalty/program`
+  (`stamps_target` 2–20, `points_per_currency` 0–10, `reward_ar`, `reward_en`,
+  `is_active`; Pydantic returns **422** outside the ranges).
+- Lowering `stamps_target` clamps every card's stamps to the new target, so no
+  card can hold more stamps than a reward needs. Deleting a customer deletes their
+  card (a card without an owner is not rendered by the payload either).
+- UI route: `/loyalty` (`LoyaltyPage.tsx`) — summary strip, the wallet card
+  preview (`components/loyalty/WalletCard.tsx`, tinted with `--accent`), tier
+  counts, an enroll control and the member table with stamp / redeem / remove
+  actions, plus the program form. The header toggle pauses the program, which only
+  stops automatic stamps from served tickets.
+- Verify: stamp a card (stamps +1, `stamps_in_progress` +1), redeem a full card
+  (stamps back to 0, `rewards_redeemed` +1), enroll an available guest, then remove
+  that card again so the seeded set is left as it was. The seeded numbers are the
+  baseline to walk back to.

@@ -12,6 +12,7 @@ from .deps import current_tenant
 from .models import SetupTask, Tenant
 from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
+from .routes import loyalty as loyalty_routes
 from .routes import menu as menu_routes
 from .routes import orders as order_routes
 from .routes import pos as pos_routes
@@ -50,6 +51,7 @@ app.include_router(inventory_routes.router)
 app.include_router(pos_routes.router)
 app.include_router(order_routes.router)
 app.include_router(customer_routes.router)
+app.include_router(loyalty_routes.router)
 app.include_router(report_routes.router)
 app.include_router(team_routes.router)
 app.include_router(setting_routes.router)

@@ -207,3 +207,31 @@ class OrderItem(Base):
     emoji: Mapped[str] = mapped_column(String(8), default="🍽️")
     unit_price: Mapped[float] = mapped_column(Float, default=0)
     qty: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class LoyaltyProgram(Base):
+    """One row per store: the stamp card rules every member card follows."""
+
+    __tablename__ = "loyalty_programs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    stamps_target: Mapped[int] = mapped_column(Integer, default=8)
+    points_per_currency: Mapped[float] = mapped_column(Float, default=2.0)
+    reward_ar: Mapped[str] = mapped_column(String(80), default="قهوة مجانية")
+    reward_en: Mapped[str] = mapped_column(String(80), default="Free coffee")
+
+
+class LoyaltyCard(Base):
+    """Enrolment and stamp progress; points are derived from the guest's tickets."""
+
+    __tablename__ = "loyalty_cards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    customer_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    stamps: Mapped[int] = mapped_column(Integer, default=0)
+    rewards_redeemed: Mapped[int] = mapped_column(Integer, default=0)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    last_stamp_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

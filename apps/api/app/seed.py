@@ -8,6 +8,8 @@ from .models import (
     Customer,
     DailyMetric,
     Ingredient,
+    LoyaltyCard,
+    LoyaltyProgram,
     MenuCategory,
     Order,
     OrderItem,
@@ -158,6 +160,14 @@ CUSTOMERS = [
     ("Sara", "0102 333 4455", "sara@example.com", "Allergic to nuts."),
     ("Omar Khaled", "0103 444 5566", "omar@example.com", "Regular: Turkish coffee."),
     ("Nour Ibrahim", "0104 555 6677", "", ""),
+]
+
+# Phase 6: (guest name, stamps in progress, rewards already redeemed)
+LOYALTY_CARDS = [
+    ("Mona", 6, 1),
+    ("Ahmed", 3, 0),
+    ("Sara", 8, 2),
+    ("Nour Ibrahim", 1, 0),
 ]
 
 STAFF = [
@@ -382,6 +392,27 @@ def seed() -> None:
                     )
                 )
             db.flush()
+
+        if db.query(LoyaltyProgram).filter_by(tenant_id=tenant.id).count() == 0:
+            db.add(LoyaltyProgram(tenant_id=tenant.id))
+
+        if db.query(LoyaltyCard).filter_by(tenant_id=tenant.id).count() == 0:
+            guests = {
+                row.name: row
+                for row in db.query(Customer).filter_by(tenant_id=tenant.id).all()
+            }
+            for name, stamps, redeemed in LOYALTY_CARDS:
+                guest = guests.get(name)
+                if guest is None:
+                    continue
+                db.add(
+                    LoyaltyCard(
+                        tenant_id=tenant.id,
+                        customer_id=guest.id,
+                        stamps=stamps,
+                        rewards_redeemed=redeemed,
+                    )
+                )
 
         if db.query(Staff).filter_by(tenant_id=tenant.id).count() == 0:
             for name, phone, role, active in STAFF:

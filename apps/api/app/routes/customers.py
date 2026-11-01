@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import current_tenant
-from ..models import Customer, Order, Tenant
+from ..models import Customer, LoyaltyCard, Order, Tenant
 from .orders import order_items, serialize_order
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -150,6 +150,10 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     db.query(Order).filter(
         Order.tenant_id == tenant.id, Order.customer_id == row.id
     ).update({Order.customer_id: 0})
+    # A loyalty card has no owner once its guest is gone.
+    db.query(LoyaltyCard).filter(
+        LoyaltyCard.tenant_id == tenant.id, LoyaltyCard.customer_id == row.id
+    ).delete()
     db.delete(row)
     db.commit()
     return serialize_customers(db, tenant)
