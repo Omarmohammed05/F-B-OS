@@ -13,7 +13,27 @@ export type SetupState = {
   tasks: SetupTask[];
 };
 
+export type Branch = {
+  id: number;
+  name_ar: string;
+  name_en: string;
+  address: string;
+  phone: string;
+  is_active: boolean;
+};
+
+export type BranchesData = { branches: Branch[]; active_id: number };
+
+export type BranchInput = {
+  name_ar: string;
+  name_en: string;
+  address?: string;
+  phone?: string;
+};
+
 export type DashboardData = {
+  branches: Branch[];
+  active_id: number;
   tenant: {
     name_ar: string;
     name_en: string;
@@ -423,6 +443,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   dashboard: () => request<DashboardData>('/api/dashboard'),
   notifications: () => request<NotificationsData>('/api/notifications'),
+  branches: () => request<BranchesData>('/api/branches'),
+  createBranch: (body: BranchInput) =>
+    request<BranchesData>('/api/branches', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  activateBranch: (id: number) =>
+    request<BranchesData>(`/api/branches/${id}/activate`, { method: 'POST' }),
   setup: () => request<SetupState>('/api/setup'),
   updateSetup: (key: string, isDone: boolean) =>
     request<SetupState>(`/api/setup/${key}`, {

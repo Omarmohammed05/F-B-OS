@@ -96,7 +96,7 @@ until staff sign-in gives each session its own identity.
 | Redemption is one transaction, one reward | Done (`POST /cards/{id}/redeem` 409 unless full) |
 | Points/stamps reverse on refund/void | **Outstanding** — there is no refund or payment capture yet; a cancelled ticket awards nothing, which is the closest existing guarantee |
 | Discount / void / price edit behind a manager PIN | **Outstanding** — needs roles and a PIN |
-| Audit trail for money, stock and access actions | **Done.** `audit_logs` (append-only) records `order.served`, `order.cancelled`, `stock.purchase|waste`, `ingredient.edit`, `product.price`, `staff.access`, `staff.delete`, `settings.update`, `loyalty.stamp|redeem|remove|program`; read it at `GET /api/audit` |
+| Audit trail for money, stock and access actions | **Done.** `audit_logs` (append-only) records `order.served`, `order.cancelled`, `stock.purchase|waste`, `ingredient.edit`, `product.price`, `staff.access`, `staff.delete`, `settings.update`, `branch.create`, `branch.activate`, `loyalty.stamp|redeem|remove|program`; read it at `GET /api/audit` |
 | Alerts to the owner (voids, variance, failures) | **Outstanding** — needs notifications and roles |
 | Staff sign-in, PIN hashing, lockout, session lifetime | **Outstanding** — the gating item for launch |
 | Security headers | **Partial.** `X-Content-Type-Options`, `Referrer-Policy`, `Cache-Control: no-store`, `X-Frame-Options` on every API reply. **CSP is not set here**: the SPA is served by the Vite dev server, so a strict policy must be added at the reverse proxy/CDN in front of a production build |

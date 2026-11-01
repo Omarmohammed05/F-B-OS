@@ -26,6 +26,10 @@ ADDITIVE_COLUMNS = [
     ("customers", "qr_token", "VARCHAR(32) NOT NULL DEFAULT ''"),
     # Phase 9: one ticket per retry, so a flaky tablet never sends twice.
     ("orders", "idempotency_key", "VARCHAR(64) NOT NULL DEFAULT ''"),
+    # Branches: the location the counter is working in, and the branch each
+    # ticket was rung up in.
+    ("tenants", "active_branch_id", "INTEGER NOT NULL DEFAULT 0"),
+    ("orders", "branch_id", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 ADDITIVE_INDEXES = [
@@ -34,7 +38,18 @@ ADDITIVE_INDEXES = [
     # A key is unique per store, and only when one was sent at all.
     "CREATE UNIQUE INDEX IF NOT EXISTS ux_orders_idempotency"
     " ON orders (tenant_id, idempotency_key) WHERE idempotency_key <> ''",
+    "CREATE INDEX IF NOT EXISTS ix_orders_branch_id ON orders (branch_id)",
 ]
+
+# A ticket rung up before branches existed belongs to the store's first branch,
+# so switching branch never hides the history the store already has.
+BRANCH_BACKFILL = """
+    UPDATE orders SET branch_id = (
+        SELECT MIN(b.id) FROM branches b WHERE b.tenant_id = orders.tenant_id
+    )
+    WHERE branch_id = 0
+      AND EXISTS (SELECT 1 FROM branches b WHERE b.tenant_id = orders.tenant_id)
+"""
 
 # Data steps that only touch rows the app itself left blank, so they are safe to
 # run on every boot. Guests created before the column existed get the same
@@ -61,6 +76,8 @@ def ensure_columns() -> None:
         if "customers" in tables:
             for statement in BACKFILLS:
                 conn.execute(text(statement))
+        if "orders" in tables and "branches" in tables:
+            conn.execute(text(BRANCH_BACKFILL))
 
 
 def get_db():

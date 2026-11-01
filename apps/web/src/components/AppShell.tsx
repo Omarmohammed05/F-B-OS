@@ -19,12 +19,18 @@ export default function AppShell() {
       : data.tenant.name_en
     : '—';
   const setup = data?.setup ?? { completed: 0, total: 0 };
-  const plan = data?.tenant.plan ?? '';
+  const branches = data?.branches ?? [];
+  const activeBranchId = data?.active_id ?? 0;
 
   return (
     <div className="min-h-screen bg-bg text-ink">
       <aside className="fixed inset-y-0 start-0 z-40 hidden w-[264px] lg:block">
-        <Sidebar storeName={storeName} plan={plan} setup={setup} />
+        <Sidebar
+          storeName={storeName}
+          branches={branches}
+          activeBranchId={activeBranchId}
+          setup={setup}
+        />
       </aside>
 
       {drawerOpen ? (
@@ -45,7 +51,8 @@ export default function AppShell() {
             </button>
             <Sidebar
               storeName={storeName}
-              plan={plan}
+              branches={branches}
+              activeBranchId={activeBranchId}
               setup={setup}
               onNavigate={() => setDrawerOpen(false)}
             />

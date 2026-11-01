@@ -17,6 +17,24 @@ class Tenant(Base):
     currency: Mapped[str] = mapped_column(String(8), default="EGP")
     tax_rate: Mapped[float] = mapped_column(Float, default=14.0)
     default_language: Mapped[str] = mapped_column(String(2), default="ar")
+    # The location the counter is working in. 0 means "no branch picked yet",
+    # and `deps.active_branch` falls back to the store's first branch.
+    active_branch_id: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Branch(Base):
+    """A location of the store. Tickets belong to the branch they were rung up in."""
+
+    __tablename__ = "branches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name_ar: Mapped[str] = mapped_column(String(120))
+    name_en: Mapped[str] = mapped_column(String(120))
+    address: Mapped[str] = mapped_column(String(160), default="")
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class SetupTask(Base):
@@ -187,6 +205,8 @@ class Order(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
     number: Mapped[str] = mapped_column(String(12))
     customer_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    # Plain integer like customer_id: deleting a branch never rewrites history.
+    branch_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
     channel: Mapped[str] = mapped_column(String(16), default="dine_in")
     table_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     customer_name: Mapped[str] = mapped_column(String(120), default="")

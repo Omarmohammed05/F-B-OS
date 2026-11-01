@@ -13,6 +13,7 @@ from .db import Base, engine, ensure_columns, get_db
 from .deps import current_tenant
 from .models import SetupTask, Tenant
 from .routes import audit as audit_routes
+from .routes import branches as branch_routes
 from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
 from .routes import loyalty as loyalty_routes
@@ -70,6 +71,7 @@ app.include_router(team_routes.router)
 app.include_router(setting_routes.router)
 app.include_router(audit_routes.router)
 app.include_router(notification_routes.router)
+app.include_router(branch_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:
@@ -105,7 +107,13 @@ def health():
 @app.get("/api/dashboard")
 def dashboard(db: Session = Depends(get_db)):
     tenant = current_tenant(db)
-    return {**build_dashboard(db, tenant), "setup": serialize_setup(db, tenant)}
+    # The sidebar switcher reads the branch list from the same payload, so a
+    # store with one branch and a store with five load exactly alike.
+    return {
+        **build_dashboard(db, tenant),
+        **branch_routes.branches_payload(db, tenant),
+        "setup": serialize_setup(db, tenant),
+    }
 
 
 @app.get("/api/setup")

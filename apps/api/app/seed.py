@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from .db import Base, SessionLocal, engine, ensure_columns
 from .models import (
     ActivityRow,
+    Branch,
     Customer,
     DailyMetric,
     Ingredient,
@@ -218,6 +219,26 @@ def seed() -> None:
             tenant = Tenant(**TENANT)
             db.add(tenant)
             db.flush()
+
+        # Every store has at least one location, so the switcher is never empty.
+        if db.query(Branch).filter_by(tenant_id=tenant.id).count() == 0:
+            branch = Branch(
+                tenant_id=tenant.id,
+                name_ar=tenant.name_ar,
+                name_en=tenant.name_en,
+                address="",
+            )
+            db.add(branch)
+            db.flush()
+            tenant.active_branch_id = branch.id
+        elif not tenant.active_branch_id:
+            first = (
+                db.query(Branch)
+                .filter(Branch.tenant_id == tenant.id)
+                .order_by(Branch.id)
+                .first()
+            )
+            tenant.active_branch_id = first.id if first else 0
 
         if db.query(SetupTask).filter_by(tenant_id=tenant.id).count() == 0:
             for sort, (key, ar, en, sum_ar, sum_en, done) in enumerate(SETUP_TASKS):
@@ -492,6 +513,13 @@ def seed() -> None:
             customer_id = known.get(order.customer_name.strip().lower())
             if customer_id:
                 order.customer_id = customer_id
+
+        # Demo tickets were rung up before branches existed: they belong to the
+        # store's first location, exactly like `db.ensure_columns` backfills.
+        if tenant.active_branch_id:
+            db.query(Order).filter(
+                Order.tenant_id == tenant.id, Order.branch_id == 0
+            ).update({"branch_id": tenant.active_branch_id})
 
         db.commit()
         print("seed: ok")

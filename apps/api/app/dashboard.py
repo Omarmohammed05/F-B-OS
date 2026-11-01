@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
+from .deps import active_branch_id
 from .models import DailyMetric, Order, OrderItem, Tenant
 
 WINDOW_DAYS = 7
@@ -33,10 +34,16 @@ def build_dashboard(db: Session, tenant: Tenant) -> dict:
     today = date.today()
     current_start = _start_of(today - timedelta(days=WINDOW_DAYS - 1))
     previous_start = _start_of(today - timedelta(days=WINDOW_DAYS * 2 - 1))
+    # Every figure below belongs to the branch the counter is working in.
+    branch_id = active_branch_id(db, tenant)
 
     recent = (
         db.query(Order)
-        .filter(Order.tenant_id == tenant.id, Order.placed_at >= previous_start)
+        .filter(
+            Order.tenant_id == tenant.id,
+            Order.branch_id == branch_id,
+            Order.placed_at >= previous_start,
+        )
         .order_by(Order.placed_at.asc())
         .all()
     )
@@ -44,6 +51,7 @@ def build_dashboard(db: Session, tenant: Tenant) -> dict:
         db.query(Order)
         .filter(
             Order.tenant_id == tenant.id,
+            Order.branch_id == branch_id,
             Order.status.in_(("new", "preparing")),
         )
         .all()
@@ -105,7 +113,7 @@ def build_dashboard(db: Session, tenant: Tenant) -> dict:
 
     newest = (
         db.query(Order)
-        .filter(Order.tenant_id == tenant.id)
+        .filter(Order.tenant_id == tenant.id, Order.branch_id == branch_id)
         .order_by(Order.placed_at.desc(), Order.id.desc())
         .limit(ACTIVITY_ROWS)
         .all()

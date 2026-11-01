@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import audit
 from ..db import get_db
-from ..deps import current_tenant
+from ..deps import active_branch_id, current_tenant
 from ..loyalty import award_stamp
 from ..models import Customer, Order, OrderItem, Product, Tenant
 from ..security import client_host, ensure_token
@@ -157,7 +157,7 @@ def list_orders(db: Session = Depends(get_db)):
     tenant = current_tenant(db)
     orders = (
         db.query(Order)
-        .filter_by(tenant_id=tenant.id)
+        .filter_by(tenant_id=tenant.id, branch_id=active_branch_id(db, tenant))
         .order_by(Order.placed_at.desc(), Order.id.desc())
         .limit(200)
         .all()
@@ -228,6 +228,8 @@ def create_order(
     order = Order(
         tenant_id=tenant.id,
         number=str(1001 + (highest or 0)),
+        # Rung up in the branch the counter is working in.
+        branch_id=active_branch_id(db, tenant),
         customer_id=customer.id if customer else 0,
         channel=payload.channel,
         table_no=payload.table_no if payload.channel == "dine_in" else None,

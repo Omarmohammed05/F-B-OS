@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import current_tenant
+from ..deps import active_branch_id, current_tenant
 from ..loyalty import get_program
 from ..models import Ingredient, LoyaltyCard, Order
 
@@ -32,7 +32,11 @@ def notifications(db: Session = Depends(get_db)):
 
     waiting = (
         db.query(Order)
-        .filter(Order.tenant_id == tenant.id, Order.status == "new")
+        .filter(
+            Order.tenant_id == tenant.id,
+            Order.branch_id == active_branch_id(db, tenant),
+            Order.status == "new",
+        )
         .count()
     )
     low = (

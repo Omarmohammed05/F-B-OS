@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import current_tenant
+from ..deps import active_branch_id, current_tenant
 from ..models import Order, OrderItem, Tenant
 from .menu import recipe_costs
 
@@ -24,7 +24,11 @@ def build_report(db: Session, tenant: Tenant, days: int) -> dict:
     start = datetime.combine(start_day, time.min)
     orders = (
         db.query(Order)
-        .filter(Order.tenant_id == tenant.id, Order.placed_at >= start)
+        .filter(
+            Order.tenant_id == tenant.id,
+            Order.branch_id == active_branch_id(db, tenant),
+            Order.placed_at >= start,
+        )
         .all()
     )
     order_ids = [order.id for order in orders]

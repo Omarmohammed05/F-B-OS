@@ -23,6 +23,7 @@ curl -s localhost:3000/api/orders | head -c 200           # live tickets
 curl -s localhost:3000/api/customers | head -c 200        # guest book + derived stats
 curl -s "localhost:3000/api/reports?days=7" | head -c 200 # sales / food cost
 curl -s localhost:3000/api/team | head -c 200             # staff roster
+curl -s localhost:3000/api/branches | head -c 200         # locations + active one
 curl -s localhost:3000/api/settings | head -c 200         # store profile + tables
 curl -s localhost:3000/api/loyalty | head -c 200          # program + member cards
 curl -s localhost:3000/api/ingredients | head -c 300      # stock balances + ledger
@@ -430,6 +431,42 @@ service.
 - Security headers are set by the middleware, except **CSP**: the SPA is served by
   the Vite dev server, so a strict policy belongs in front of a production build
   (reverse proxy or CDN), not in `vite.config.ts` where it would fight HMR.
+
+
+## Branches (locations)
+
+- `branches` holds one row per location; `tenants.active_branch_id` is the one the
+  counter is working in, and `orders.branch_id` (plain integer, like `customer_id`)
+  records where a ticket was rung up. `create_all` creates `branches`; the two
+  columns are in `ADDITIVE_COLUMNS`, and `db.BRANCH_BACKFILL` (boot) plus the tail
+  of `seed.py` move pre-branch tickets onto the store's first location, so
+  switching never hides history.
+- `deps.active_branch` resolves the selection **inside the tenant** (a branch id
+  from another store is a 404, never a switch) and falls back to the store's first
+  branch. `deps.active_branch_id` is what scoped queries filter on: 0 means "no
+  branch rows yet" (before the seed), and every ticket is 0 then, so filtering
+  still matches all of them.
+- Scoped by branch: `GET/POST /api/orders`, the dashboard, `GET /api/reports`
+  (and the CSV export, which shares `build_report`) and the "new tickets" alert.
+  Store-wide on purpose: menu, stock ledger, guest book, the loyalty program and
+  cards (one guest, many doors) and the settings table count.
+- Endpoints: `GET /api/branches` (`{branches, active_id}`), `POST /api/branches`
+  (`{name_ar, name_en, address?, phone?}` → 201, **409** when the English name
+  already exists in the store, **422** when a name is blank after trimming) and
+  `POST /api/branches/{id}/activate`. Adding does not switch; the very first branch
+  a store gets becomes active. `/api/dashboard` carries `branches` and `active_id`
+  too, so the switcher needs no second request.
+- UI: `components/BranchMenu.tsx` sits at the top of the sidebar — the trigger
+  shows the store name over the active branch, the menu lists every branch
+  (`menuitemradio`, checked = active) and a real **إضافة فرع** button (44px, accent
+  colour, not disabled) opening a `Sheet` form. Switching calls
+  `window.location.reload()`: the orders board, POS and reports read branch-scoped
+  tickets on mount, so the app restarts on the chosen location rather than
+  half-updating.
+- Tests: `apps/api/tests/test_branches.py` (5 checks) put `tenants.active_branch_id`
+  back, and delete the branch plus the `branch.*` audit rows they wrote — switching
+  logs an `audit_logs` row even for the store's own branch, so cleanup is by id
+  watermark. Baseline after a run: 1 branch, 8 orders, 0 audit rows.
 
 
 ## The top bar bell
