@@ -2,6 +2,7 @@ import { KeyRound, Trash2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   api,
+  type Branch,
   type Restaurant,
   type StaffInput,
   type StaffMember,
@@ -17,6 +18,9 @@ type Props = {
   member: StaffMember | null;
   /** The restaurant the roster is showing; a new account joins this one. */
   restaurant: Restaurant | null;
+  /** The branch the roster is showing; a new member works in it. */
+  branchId: number;
+  branches: Branch[];
   onClose: () => void;
   onSaved: (data: TeamData) => void;
 };
@@ -25,6 +29,8 @@ export default function StaffDialog({
   open,
   member,
   restaurant,
+  branchId,
+  branches,
   onClose,
   onSaved,
 }: Props) {
@@ -32,6 +38,7 @@ export default function StaffDialog({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<StaffRole>('cashier');
+  const [branch, setBranch] = useState(branchId);
   const [active, setActive] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -46,6 +53,7 @@ export default function StaffDialog({
     setName(member?.name ?? '');
     setPhone(member?.phone ?? '');
     setRole(member?.role ?? 'cashier');
+    setBranch(member?.branch_id || branchId);
     setActive(member?.is_active ?? true);
     setUsername(member?.username ?? '');
     setPassword('');
@@ -81,6 +89,9 @@ export default function StaffDialog({
       phone: phone.trim(),
       role,
       is_active: active,
+      // The admin and the owner sit above every branch, so they carry no
+      // location; everyone else works in one.
+      branch_id: role === 'admin' || role === 'owner' ? 0 : branch,
     };
     if (creating) {
       payload.username = username.trim();
@@ -227,6 +238,25 @@ export default function StaffDialog({
             <span className="text-[14px] text-ink">{t('team.active')}</span>
           </label>
         </div>
+
+        {branches.length > 0 && role !== 'admin' && role !== 'owner' ? (
+          <label className="block">
+            <span className="mb-1 block text-[13px] font-medium text-ink-2">
+              {t('team.branch')}
+            </span>
+            <select
+              className="field"
+              value={branch || branches[0].id}
+              onChange={(event) => setBranch(Number(event.target.value))}
+            >
+              {branches.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {lang === 'ar' ? row.name_ar : row.name_en}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <div className="rounded-field border border-line bg-surface-2 p-3">
           <p className="flex items-center gap-2 text-[13px] font-semibold text-ink">

@@ -484,6 +484,11 @@ def seed() -> None:
                 db.add(
                     Staff(
                         tenant_id=tenant.id,
+                        # Operational staff work in the store's first location;
+                        # the admin sits above every branch (0).
+                        branch_id=(
+                            0 if role in ("admin", "owner") else tenant.active_branch_id
+                        ),
                         name=name,
                         phone=phone,
                         role=role,
@@ -536,6 +541,11 @@ def seed() -> None:
                 db.add(member)
             member.role = role
             member.is_active = True
+            member.branch_id = (
+                0
+                if role in ("admin", "owner")
+                else (member.branch_id or tenant.active_branch_id)
+            )
             member.username = username
             member.password_hash = hash_password(ADMIN_PASSWORD)
 

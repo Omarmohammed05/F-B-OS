@@ -13,13 +13,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .. import audit, auth
 from ..db import get_db
-from ..deps import current_tenant
-from ..models import AuthSession, Staff, Tenant
+from ..deps import active_branch_id, current_tenant
+from ..models import AuthSession, Branch, Staff, Tenant
 
 router = APIRouter(prefix="/api/team", tags=["team"])
 
@@ -38,7 +38,8 @@ def serialize_restaurant(tenant: Tenant) -> dict:
     }
 
 
-def serialize_staff(row: Staff) -> dict:
+def serialize_staff(row: Staff, branches: dict[int, Branch] | None = None) -> dict:
+    branch = (branches or {}).get(row.branch_id)
     return {
         "id": row.id,
         "name": row.name,
@@ -49,19 +50,29 @@ def serialize_staff(row: Staff) -> dict:
         "onboarded": row.onboarded_at is not None,
         "is_active": row.is_active,
         "restaurant_id": row.tenant_id,
+        # The location this person works in; 0 is store-wide (admin and owner).
+        "branch_id": row.branch_id,
+        "branch_ar": branch.name_ar if branch else "",
+        "branch_en": branch.name_en if branch else "",
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 
 
-def serialize_team(db: Session, tenant: Tenant) -> dict:
-    rows = (
-        db.query(Staff)
-        .filter_by(tenant_id=tenant.id)
-        .order_by(Staff.is_active.desc(), Staff.id)
-        .all()
-    )
+def serialize_team(db: Session, tenant: Tenant, branch_id: int | None = None) -> dict:
+    query = db.query(Staff).filter(Staff.tenant_id == tenant.id)
+    if branch_id:
+        # A location's own people, plus the store-level roles that sit above
+        # every branch (branch 0: the restaurant admin and the platform owner).
+        query = query.filter(
+            or_(Staff.branch_id == branch_id, Staff.branch_id == 0)
+        )
+    rows = query.order_by(Staff.is_active.desc(), Staff.id).all()
+    branches = {
+        row.id: row
+        for row in db.query(Branch).filter(Branch.tenant_id == tenant.id).all()
+    }
     return {
-        "staff": [serialize_staff(row) for row in rows],
+        "staff": [serialize_staff(row, branches) for row in rows],
         "restaurant": serialize_restaurant(tenant),
         "summary": {
             "total": len(rows),
@@ -73,9 +84,11 @@ def serialize_team(db: Session, tenant: Tenant) -> dict:
     }
 
 
-def team_payload(db: Session, user: Staff, tenant: Tenant) -> dict:
+def team_payload(
+    db: Session, user: Staff, tenant: Tenant, branch_id: int | None = None
+) -> dict:
     """One restaurant's roster, plus the picker only the platform owner needs."""
-    payload = serialize_team(db, tenant)
+    payload = serialize_team(db, tenant, branch_id)
     if user.role == "owner":
         payload["restaurants"] = [
             serialize_restaurant(row)
@@ -102,6 +115,20 @@ def resolve_restaurant(
     if tenant is None:
         raise HTTPException(status_code=404, detail="Restaurant not found")
     return tenant
+
+
+def resolve_branch(db: Session, tenant: Tenant, branch_id: int) -> Branch | None:
+    """A branch of this store; 0 is the store itself and needs no row."""
+    if not branch_id:
+        return None
+    branch = (
+        db.query(Branch)
+        .filter(Branch.tenant_id == tenant.id, Branch.id == branch_id)
+        .first()
+    )
+    if branch is None:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    return branch
 
 
 def get_staff(db: Session, user: Staff, staff_id: int) -> Staff:
@@ -145,6 +172,9 @@ class StaffIn(BaseModel):
     # Which restaurant the account belongs to. Ignored for a non-admin, who can
     # only add to their own store.
     restaurant_id: int | None = None
+    # The location the person works in. Empty means the store's active branch;
+    # admin and owner are store-wide (0) whatever is sent.
+    branch_id: int | None = None
 
 
 class StaffPatch(BaseModel):
@@ -154,6 +184,8 @@ class StaffPatch(BaseModel):
     is_active: bool | None = None
     # Setting a password on a member who already has a username resets it.
     password: str | None = Field(default=None, max_length=200)
+    # Moving somebody to another location.
+    branch_id: int | None = None
 
 
 def new_credentials(db: Session, username: str, password: str):
@@ -182,10 +214,12 @@ def new_credentials(db: Session, username: str, password: str):
 @router.get("")
 def list_team(
     restaurant_id: int | None = None,
+    branch_id: int | None = None,
     user: Staff = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ):
-    return team_payload(db, user, resolve_restaurant(db, user, restaurant_id))
+    tenant = resolve_restaurant(db, user, restaurant_id)
+    return team_payload(db, user, tenant, branch_id)
 
 
 @router.post("", status_code=201)
@@ -197,6 +231,7 @@ def create_staff(
     tenant = resolve_restaurant(db, user, payload.restaurant_id)
     values = payload.model_dump()
     values.pop("restaurant_id")
+    branch_id = values.pop("branch_id")
     username = values.pop("username").strip()
     password = values.pop("password")
 
@@ -223,6 +258,14 @@ def create_staff(
         values["username"], values["password_hash"] = new_credentials(
             db, username, password
         )
+
+    # Every operational role works in a location; the store-level ones sit above
+    # them and stay store-wide so they appear in each branch's roster.
+    if values["role"] in ("admin", "owner"):
+        values["branch_id"] = 0
+    else:
+        resolve_branch(db, tenant, branch_id or 0)
+        values["branch_id"] = branch_id or active_branch_id(db, tenant)
 
     row = Staff(tenant_id=tenant.id, **values)
     db.add(row)
@@ -305,6 +348,17 @@ def update_staff(
     if losing_owner and active_platform_owners(db, row.id) == 0:
         raise HTTPException(
             status_code=409, detail="The platform needs at least one active owner."
+        )
+
+    # Which location the member works in follows their role: a manager, cashier
+    # or kitchen member belongs to a branch, while the admin sits above them all.
+    if changes.get("branch_id"):
+        resolve_branch(db, tenant, changes["branch_id"])
+    if changes.get("role", row.role) in ("admin", "owner"):
+        changes["branch_id"] = 0
+    else:
+        changes["branch_id"] = (
+            changes.get("branch_id") or row.branch_id or active_branch_id(db, tenant)
         )
 
     for field, value in changes.items():

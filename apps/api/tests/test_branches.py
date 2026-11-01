@@ -20,6 +20,10 @@ def scratch(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def scratch_username(prefix: str) -> str:
+    return f"{prefix}.{uuid.uuid4().hex[:8]}"
+
+
 @pytest.fixture()
 def store(db):
     """The seeded store, plus its original branch selection to restore."""
@@ -158,6 +162,112 @@ def test_branch_needs_two_names_and_no_duplicates(client, db):
     assert (
         db.query(Branch).filter(Branch.name_en == "Only English").count() == 0
     )
+
+
+# ------------------------------------------------- editing and deleting
+
+
+def test_a_branch_can_be_renamed_and_keeps_names_unique(client, db, store):
+    branch = add_branch(client)
+    try:
+        renamed = scratch("Renamed")
+        edited = client.patch(
+            f"/api/branches/{branch['id']}",
+            json={"name_en": renamed, "address": "12 Nile St", "phone": "0100 000"},
+        )
+        assert edited.status_code == 200
+        row = next(
+            item for item in edited.json()["branches"] if item["id"] == branch["id"]
+        )
+        assert row["name_en"] == renamed
+        assert row["address"] == "12 Nile St"
+        assert row["phone"] == "0100 000"
+
+        db.expire_all()
+        assert db.get(Branch, branch["id"]).name_en == renamed
+
+        # The switcher still tells two locations apart by name.
+        other = next(
+            item
+            for item in client.get("/api/branches").json()["branches"]
+            if item["id"] != branch["id"]
+        )
+        clash = client.patch(
+            f"/api/branches/{branch['id']}", json={"name_en": other["name_en"].upper()}
+        )
+        assert clash.status_code == 409
+
+        blank = client.patch(f"/api/branches/{branch['id']}", json={"name_en": "   "})
+        assert blank.status_code == 422
+        db.expire_all()
+        assert db.get(Branch, branch["id"]).name_en == renamed
+    finally:
+        drop_branch(db, branch["id"])
+
+
+def test_a_branch_can_be_deleted(client, db, store):
+    branch = add_branch(client)
+    deleted = client.delete(f"/api/branches/{branch['id']}")
+    assert deleted.status_code == 200
+    assert branch["id"] not in [
+        item["id"] for item in deleted.json()["branches"]
+    ]
+    db.expire_all()
+    assert db.get(Branch, branch["id"]) is None
+    # Deleting it never moves the store off the branch the counter is in.
+    assert client.get("/api/branches").json()["active_id"] == store["branch_id"]
+
+
+def test_a_branch_keeps_its_own_employees(client, db, store):
+    branch = add_branch(client)
+    username = scratch_username("cashier")
+    staff_id = 0
+    try:
+        created = client.post(
+            "/api/team",
+            json={
+                "name": "Branch Cashier",
+                "role": "cashier",
+                "username": username,
+                "password": "sufra1234",
+                "branch_id": branch["id"],
+            },
+        )
+        assert created.status_code == 201
+        member = next(
+            row for row in created.json()["staff"] if row["username"] == username
+        )
+        staff_id = member["id"]
+        assert member["branch_id"] == branch["id"]
+        assert member["branch_en"] == branch["name_en"]
+
+        # The location's roster holds its own people...
+        mine = client.get(f"/api/team?branch_id={branch['id']}").json()["staff"]
+        assert staff_id in [row["id"] for row in mine]
+        # ...and the store-level admin sits above every branch, so it is there too.
+        assert any(row["role"] == "admin" for row in mine)
+
+        # Another location's roster does not show them.
+        elsewhere = client.get(
+            f"/api/team?branch_id={store['branch_id']}"
+        ).json()["staff"]
+        assert staff_id not in [row["id"] for row in elsewhere]
+
+        # A branch with people in it is not deleted under their feet.
+        assert client.delete(f"/api/branches/{branch['id']}").status_code == 409
+
+        # Moving the member frees the branch again.
+        moved = client.patch(
+            f"/api/team/{staff_id}", json={"branch_id": store["branch_id"]}
+        )
+        assert moved.status_code == 200
+        assert client.delete(f"/api/branches/{branch['id']}").status_code == 200
+    finally:
+        if staff_id:
+            client.delete(f"/api/team/{staff_id}")
+        db.expire_all()
+        if db.get(Branch, branch["id"]) is not None:
+            drop_branch(db, branch["id"])
 
 
 # -------------------------------------------------------- tenant isolation

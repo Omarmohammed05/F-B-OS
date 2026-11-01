@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth';
 import { formatNumber } from '../lib/format';
 import { useLang } from '../lib/i18n';
 import { ROLE_LABEL_KEY, ROLE_TONE, canManageStore } from '../lib/roles';
+import { useAppData } from '../lib/store';
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -36,13 +37,22 @@ export default function TeamPage() {
   // An admin can look at any restaurant's roster; everyone else only sees their
   // own, which is what the API returns when no restaurant is asked for.
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  // A branch has its own people, so the roster follows the location the counter
+  // is working in until the admin picks another one.
+  const { data: appData } = useAppData();
+  const branches = appData?.branches ?? [];
+  const [branchId, setBranchId] = useState(0);
+
+  useEffect(() => {
+    if (!branchId && appData?.active_id) setBranchId(appData.active_id);
+  }, [appData?.active_id, branchId]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(false);
     api
-      .team(restaurantId ?? undefined)
+      .team(restaurantId ?? undefined, branchId || undefined)
       .then((result) => {
         if (!cancelled) setTeam(result);
       })
@@ -55,7 +65,7 @@ export default function TeamPage() {
     return () => {
       cancelled = true;
     };
-  }, [nonce, restaurantId]);
+  }, [nonce, restaurantId, branchId]);
 
   const rows = useMemo(() => {
     if (!team) return [];
@@ -69,8 +79,11 @@ export default function TeamPage() {
   }, [team, query]);
 
   const applyTeam = (next: TeamData) => {
+    // A saved member answers with the whole store's roster, so read the branch
+    // this page is showing again instead of listing another location's people.
     setTeam(next);
     setError(false);
+    setNonce((value) => value + 1);
   };
 
   const toggleActive = (member: StaffMember) => {
@@ -110,6 +123,29 @@ export default function TeamPage() {
           </button>
         ) : null}
       </div>
+
+      {branches.length > 0 ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="mb-1 block text-[13px] font-medium text-ink-2">
+              {t('team.branch')}
+            </span>
+            <select
+              className="field h-11 min-w-[200px]"
+              aria-label={t('team.branch')}
+              value={branchId}
+              onChange={(event) => setBranchId(Number(event.target.value))}
+              disabled={loading}
+            >
+              {branches.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {lang === 'ar' ? row.name_ar : row.name_en}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       {canManage && team?.restaurants ? (
         <div className="flex flex-wrap items-end gap-2">
@@ -315,6 +351,8 @@ export default function TeamPage() {
         open={dialogOpen}
         member={editing}
         restaurant={team?.restaurant ?? null}
+        branchId={branchId}
+        branches={branches}
         onClose={() => setDialogOpen(false)}
         onSaved={applyTeam}
       />

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .. import audit, auth
 from ..db import get_db
 from ..deps import active_branch, current_tenant
-from ..models import Branch, Staff, Tenant
+from ..models import Branch, Order, Staff, Tenant
 
 router = APIRouter(prefix="/api/branches", tags=["branches"])
 
@@ -50,6 +50,13 @@ class BranchIn(BaseModel):
     name_en: str = Field(min_length=1, max_length=120)
     address: str = Field(default="", max_length=160)
     phone: str = Field(default="", max_length=40)
+
+
+class BranchPatch(BaseModel):
+    name_ar: str | None = Field(default=None, max_length=120)
+    name_en: str | None = Field(default=None, max_length=120)
+    address: str | None = Field(default=None, max_length=160)
+    phone: str | None = Field(default=None, max_length=40)
 
 
 def find_branch(db: Session, tenant: Tenant, branch_id: int) -> Branch:
@@ -121,6 +128,135 @@ def create_branch(
         tenant.active_branch_id = branch.id
     db.commit()
     db.refresh(branch)
+    return branches_payload(db, tenant)
+
+
+@router.patch("/{branch_id}")
+def update_branch(
+    branch_id: int,
+    patch: BranchPatch,
+    user: Staff = Depends(auth.require_admin),
+    db: Session = Depends(get_db),
+):
+    """Rename a location or correct its address and phone."""
+    tenant = current_tenant(db)
+    branch = find_branch(db, tenant, branch_id)
+    changes = patch.model_dump(exclude_unset=True)
+
+    for field in ("name_ar", "name_en"):
+        if field in changes:
+            value = (changes[field] or "").strip()
+            if not value:
+                raise HTTPException(
+                    status_code=422,
+                    detail="A branch needs a name in both languages.",
+                )
+            changes[field] = value
+    for field in ("address", "phone"):
+        if field in changes:
+            changes[field] = (changes[field] or "").strip()
+
+    # The switcher tells locations apart by name, so it stays unique per store.
+    name_en = changes.get("name_en", branch.name_en)
+    duplicate = (
+        db.query(Branch)
+        .filter(
+            Branch.tenant_id == tenant.id,
+            Branch.id != branch.id,
+            func.lower(Branch.name_en) == name_en.lower(),
+        )
+        .first()
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409, detail="A branch with this name already exists."
+        )
+
+    for field, value in changes.items():
+        setattr(branch, field, value)
+    audit.log(
+        db,
+        tenant.id,
+        "branch.update",
+        "branch",
+        branch.id,
+        branch.name_en,
+        actor=user.name,
+    )
+    db.commit()
+    return branches_payload(db, tenant)
+
+
+@router.delete("/{branch_id}")
+def delete_branch(
+    branch_id: int,
+    user: Staff = Depends(auth.require_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove a location the store no longer runs.
+
+    A branch that still holds people or tickets is refused: its staff would lose
+    the location they work in and its tickets would never show on a board again.
+    """
+    tenant = current_tenant(db)
+    branch = find_branch(db, tenant, branch_id)
+
+    remaining = (
+        db.query(func.count(Branch.id))
+        .filter(Branch.tenant_id == tenant.id, Branch.id != branch.id)
+        .scalar()
+        or 0
+    )
+    if remaining == 0:
+        raise HTTPException(
+            status_code=409, detail="The store needs at least one branch."
+        )
+
+    # Store-wide rows (branch 0, the admin and the owner) never block a delete.
+    people = (
+        db.query(func.count(Staff.id))
+        .filter(Staff.tenant_id == tenant.id, Staff.branch_id == branch.id)
+        .scalar()
+        or 0
+    )
+    if people:
+        raise HTTPException(
+            status_code=409,
+            detail="Move this branch's employees to another branch first.",
+        )
+
+    tickets = (
+        db.query(func.count(Order.id))
+        .filter(Order.tenant_id == tenant.id, Order.branch_id == branch.id)
+        .scalar()
+        or 0
+    )
+    if tickets:
+        raise HTTPException(
+            status_code=409,
+            detail="This branch has tickets; rename it instead of deleting it.",
+        )
+
+    audit.log(
+        db,
+        tenant.id,
+        "branch.delete",
+        "branch",
+        branch.id,
+        branch.name_en,
+        actor=user.name,
+    )
+    db.delete(branch)
+    db.flush()
+    if tenant.active_branch_id == branch.id:
+        first = (
+            db.query(Branch)
+            .filter(Branch.tenant_id == tenant.id)
+            .order_by(Branch.id)
+            .first()
+        )
+        tenant.active_branch_id = first.id if first else 0
+    db.commit()
     return branches_payload(db, tenant)
 
 

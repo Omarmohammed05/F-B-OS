@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Plus, Store } from 'lucide-react';
+import { Check, ChevronDown, Pencil, Plus, Store, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, type Branch } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -37,8 +37,12 @@ export default function BranchMenu({
   const [open, setOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  // The branch being edited; null while the sheet is adding a new one.
+  const [editing, setEditing] = useState<Branch | null>(null);
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState(0);
+  // The branch whose delete button was pressed once and is waiting for a yes.
+  const [confirming, setConfirming] = useState(0);
   const [error, setError] = useState('');
 
   const label = (branch: Branch) => (lang === 'ar' ? branch.name_ar : branch.name_en);
@@ -62,10 +66,21 @@ export default function BranchMenu({
     }
   };
 
-  const openForm = () => {
+  const openForm = (branch: Branch | null) => {
     setOpen(false);
     setError('');
-    setDraft(EMPTY);
+    setConfirming(0);
+    setEditing(branch);
+    setDraft(
+      branch
+        ? {
+            name_ar: branch.name_ar,
+            name_en: branch.name_en,
+            address: branch.address,
+            phone: branch.phone,
+          }
+        : EMPTY,
+    );
     setFormOpen(true);
   };
 
@@ -78,17 +93,20 @@ export default function BranchMenu({
     }
     setSaving(true);
     setError('');
+    const body = {
+      name_ar: nameAr,
+      name_en: nameEn,
+      address: draft.address.trim(),
+      phone: draft.phone.trim(),
+    };
     try {
-      await api.createBranch({
-        name_ar: nameAr,
-        name_en: nameEn,
-        address: draft.address.trim(),
-        phone: draft.phone.trim(),
-      });
+      if (editing) await api.updateBranch(editing.id, body);
+      else await api.createBranch(body);
       setFormOpen(false);
+      setEditing(null);
       setDraft(EMPTY);
       reload();
-      // Show the branch the store just gained, ready to be picked.
+      // Show the branch list again, with the change the store just made.
       setOpen(true);
     } catch (err) {
       const message = String(err);
@@ -97,10 +115,38 @@ export default function BranchMenu({
           ? t('branch.exists')
           : message.includes('403')
             ? t('branch.forbidden')
-            : t('branch.error'),
+            : editing
+              ? t('branch.updateError')
+              : t('branch.error'),
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const remove = async (branch: Branch) => {
+    setSwitching(branch.id);
+    setError('');
+    try {
+      const result = await api.deleteBranch(branch.id);
+      setConfirming(0);
+      reload();
+      // Deleting the location the counter is in moves the store to another one,
+      // and every board reads the active branch on mount: start the app again.
+      if (branch.id === activeId) window.location.reload();
+      else if (result.branches.length === 1) setOpen(false);
+    } catch (err) {
+      const message = String(err);
+      setConfirming(0);
+      setError(
+        message.includes('409')
+          ? t('branch.deleteBlocked')
+          : message.includes('403')
+            ? t('branch.forbidden')
+            : t('branch.deleteError'),
+      );
+    } finally {
+      setSwitching(0);
     }
   };
 
@@ -144,23 +190,63 @@ export default function BranchMenu({
             {branches.map((branch) => {
               const isActive = branch.id === activeId;
               return (
-                <button
-                  key={branch.id}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={isActive}
-                  disabled={switching !== 0}
-                  onClick={() => switchTo(branch)}
-                  className={`flex min-h-11 w-full items-center gap-2 rounded-[8px] px-2.5 py-2 text-start text-[13px] transition-colors duration-150 hover:bg-surface-2 ${
-                    isActive ? 'font-semibold text-ink' : 'font-medium text-ink'
-                  }`}
-                >
-                  <Store size={15} className="shrink-0 text-ink-2" />
-                  <span className="min-w-0 flex-1 truncate">{label(branch)}</span>
-                  {isActive ? (
-                    <Check size={15} className="shrink-0 text-accent" />
+                <div key={branch.id} className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={isActive}
+                    disabled={switching !== 0}
+                    onClick={() => switchTo(branch)}
+                    className={`flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-[8px] px-2.5 py-2 text-start text-[13px] transition-colors duration-150 hover:bg-surface-2 ${
+                      isActive ? 'font-semibold text-ink' : 'font-medium text-ink'
+                    }`}
+                  >
+                    <Store size={15} className="shrink-0 text-ink-2" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {label(branch)}
+                    </span>
+                    {isActive ? (
+                      <Check size={15} className="shrink-0 text-accent" />
+                    ) : null}
+                  </button>
+
+                  {canAdd ? (
+                    confirming === branch.id ? (
+                      <button
+                        type="button"
+                        onClick={() => remove(branch)}
+                        disabled={switching !== 0}
+                        className="shrink-0 rounded-[8px] px-2 py-2 text-[12px] font-semibold text-[color:var(--danger)] transition-colors duration-150 hover:bg-surface-2 disabled:opacity-50"
+                      >
+                        {t('branch.deleteConfirm')}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openForm(branch)}
+                          aria-label={`${t('branch.edit')} — ${label(branch)}`}
+                          title={t('branch.edit')}
+                          className="icon-btn h-8 w-8 shrink-0"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError('');
+                            setConfirming(branch.id);
+                          }}
+                          aria-label={`${t('branch.delete')} — ${label(branch)}`}
+                          title={t('branch.delete')}
+                          className="icon-btn h-8 w-8 shrink-0 text-[color:var(--danger)]"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )
                   ) : null}
-                </button>
+                </div>
               );
             })}
 
@@ -170,7 +256,7 @@ export default function BranchMenu({
 
                 <button
                   type="button"
-                  onClick={openForm}
+                  onClick={() => openForm(null)}
                   className="flex min-h-11 w-full items-center gap-2 rounded-[8px] px-2.5 py-2 text-start text-[13px] font-semibold text-accent transition-colors duration-150 hover:bg-surface-2"
                 >
                   <Plus size={15} className="shrink-0" />
@@ -190,9 +276,12 @@ export default function BranchMenu({
 
       <Sheet
         open={formOpen}
-        title={t('branch.title')}
+        title={editing ? t('branch.editTitle') : t('branch.title')}
         closeLabel={t('common.close')}
-        onClose={() => setFormOpen(false)}
+        onClose={() => {
+          setFormOpen(false);
+          setEditing(null);
+        }}
         footer={
           <>
             <button
@@ -201,7 +290,13 @@ export default function BranchMenu({
               disabled={saving}
               className="btn btn-primary h-11 px-4 text-[14px] disabled:opacity-60"
             >
-              {saving ? t('branch.saving') : t('branch.save')}
+              {saving
+                ? editing
+                  ? t('branch.savingEdit')
+                  : t('branch.saving')
+                : editing
+                  ? t('branch.saveEdit')
+                  : t('branch.save')}
             </button>
             <button
               type="button"

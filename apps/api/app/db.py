@@ -52,6 +52,9 @@ ADDITIVE_COLUMNS = [
     # store's rule applies.
     ("staff", "shift_start", "VARCHAR(5) NOT NULL DEFAULT ''"),
     ("staff", "shift_grace_minutes", "INTEGER NULL"),
+    # Branches: the location a member of staff works in. 0 is the store itself
+    # (the admin and the platform owner sit above every branch).
+    ("staff", "branch_id", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 ADDITIVE_INDEXES = [
@@ -61,6 +64,7 @@ ADDITIVE_INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS ux_orders_idempotency"
     " ON orders (tenant_id, idempotency_key) WHERE idempotency_key <> ''",
     "CREATE INDEX IF NOT EXISTS ix_orders_branch_id ON orders (branch_id)",
+    "CREATE INDEX IF NOT EXISTS ix_staff_branch_id ON staff (branch_id)",
     # One account name per store; roster entries without a login are exempt.
     "CREATE UNIQUE INDEX IF NOT EXISTS ux_staff_username"
     " ON staff (tenant_id, username) WHERE username <> ''",
@@ -82,6 +86,16 @@ BRANCH_BACKFILL = """
 BACKFILLS = [
     "UPDATE customers SET qr_token = md5(random()::text || id::text)"
     " WHERE qr_token = ''",
+    # Staff hired before branches existed work in the store's active location.
+    # Store-level roles (admin, owner) stay 0 on purpose: they are above every
+    # branch, so they show in each one's roster.
+    "UPDATE staff SET branch_id = ("
+    " SELECT COALESCE(NULLIF(t.active_branch_id, 0),"
+    "                 (SELECT MIN(b.id) FROM branches b WHERE b.tenant_id = staff.tenant_id))"
+    " FROM tenants t WHERE t.id = staff.tenant_id"
+    ") WHERE branch_id = 0"
+    " AND role NOT IN ('admin', 'owner')"
+    " AND EXISTS (SELECT 1 FROM branches b WHERE b.tenant_id = staff.tenant_id)",
 ]
 
 # The roles were redefined when the platform owner arrived: `admin` used to be

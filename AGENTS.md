@@ -469,7 +469,7 @@ service.
   touches empty values). The Wallet barcode and `accountId` use it instead of the
   customer id, and a pass carries no phone number or email.
 - Tests live in `apps/api/tests/` and run in the api container (`python -m pytest
-  tests -q`, 52 checks — the `python -m` form is the one that resolves the `app`
+  tests -q`, 55 checks — the `python -m` form is the one that resolves the `app`
   package; bare `pytest` fails with `ModuleNotFoundError: No module named 'app'`).
   They use the app's own database, so each one creates uniquely named
   rows and deletes exactly those again — the seeded store must be back at 8 orders,
@@ -553,12 +553,28 @@ service.
   (and the CSV export, which shares `build_report`) and the "new tickets" alert.
   Store-wide on purpose: menu, stock ledger, guest book, the loyalty program and
   cards (one guest, many doors) and the settings table count.
+- **A branch has its own employees.** `staff.branch_id` (additive, `db.py` **and**
+  `models.py`, indexed) points a person at a location. `0` means store-wide, which
+  is exactly the `admin` and the `owner`: they sit above every branch, so they
+  appear in each one's roster. `BACKFILLS` in `db.py` moves staff who predate the
+  column onto the store's active location (store-level roles stay 0), and the seed
+  writes the same value for a fresh store. `POST/PATCH /api/team` resolve the
+  branch inside the tenant while a role is operational and force `0` for
+  `admin`/`owner`, so a person can never point at another store.
+- `GET /api/team?branch_id=N` answers that location's people plus the store-level
+  rows; without the parameter it is the whole restaurant, which is what the
+  platform owner's restaurant picker needs. Each staff row carries `branch_id`,
+  `branch_ar` and `branch_en`.
 - Endpoints: `GET /api/branches` (`{branches, active_id}`), `POST /api/branches`
   (`{name_ar, name_en, address?, phone?}` → 201, **409** when the English name
-  already exists in the store, **422** when a name is blank after trimming) and
-  `POST /api/branches/{id}/activate`. Adding does not switch; the very first branch
-  a store gets becomes active. `/api/dashboard` carries `branches` and `active_id`
-  too, so the switcher needs no second request.
+  already exists in the store, **422** when a name is blank after trimming),
+  `PATCH /api/branches/{id}` (rename / address / phone, same 409 and 422) and
+  `DELETE /api/branches/{id}` (**409** for the store's last branch, a branch that
+  still has employees, or one that has tickets — a ticket's branch id would never
+  appear on a board again), plus `POST /api/branches/{id}/activate`. Deleting the
+  active branch moves the store to the first remaining one. Adding does not
+  switch; the very first branch a store gets becomes active. `/api/dashboard`
+  carries `branches` and `active_id` too, so the switcher needs no second request.
 - UI: `components/BranchMenu.tsx` sits at the top of the sidebar — the trigger
   shows the store name over the active branch, the menu lists every branch
   (`menuitemradio`, checked = active) and a real **إضافة فرع** button (44px, accent
@@ -570,10 +586,37 @@ service.
   `window.location.reload()`: the orders board, POS and reports read branch-scoped
   tickets on mount, so the app restarts on the chosen location rather than
   half-updating.
-- Tests: `apps/api/tests/test_branches.py` (5 checks) put `tenants.active_branch_id`
-  back, and delete the branch plus the `branch.*` audit rows they wrote — switching
-  logs an `audit_logs` row even for the store's own branch, so cleanup is by id
-  watermark. Baseline after a run: 1 branch, 8 orders, 0 audit rows.
+- Every branch row in that menu carries a pencil and a bin (same
+  `canManageStore` gate). The pencil reopens the same `Sheet` with the branch's
+  values and saves through `PATCH`; the bin turns into a **حذف؟** button and the
+  second tap deletes. A 409 reads `branch.deleteBlocked` ("still has employees or
+  tickets"). Deleting the branch the counter is in reloads the app, because the
+  store just moved to another location; deleting any other one only refreshes the
+  list and the dashboard's branch data.
+- `/team` has a **الفرع** select, defaulting to the active branch and scoped by
+  `api.team(restaurantId, branchId)`. `components/team/StaffDialog.tsx` shows the
+  branch for operational roles (hidden for `admin`/`owner`) and defaults to the
+  branch on screen. A save answers with the whole store's roster, so `applyTeam`
+  bumps the reload nonce and rereads the selected branch instead of listing
+  another location's people.
+- Tests: `apps/api/tests/test_branches.py` (8 checks) put
+  `tenants.active_branch_id` back, and delete the branch, the scratch staff member
+  and the `branch.*` audit rows they wrote — switching logs an `audit_logs` row
+  even for the store's own branch, so cleanup is by id watermark. Baseline after a
+  run: 1 branch, 8 orders, 6 staff, 0 audit rows. A leftover branch named after a
+  hand-typed test ("oo"/"dd") makes
+  `test_branch_can_be_added_listed_and_switched` fail at "switching back brings the
+  store's own tickets back" — every seeded ticket lives in Qahwa House, so pick it
+  in the switcher and delete the stray one.
+
+## Staff, branches and the roster
+
+- Roles decide where a person sits: `admin` and `owner` are store-wide
+  (`branch_id = 0`), `manager` / `cashier` / `kitchen` belong to one location. A
+  save that demotes an admin to cashier puts them on the active branch, and one
+  that promotes a branch member to admin clears their branch — `update_staff` does
+  both, so the roster never holds a cashier without a location or an admin tied to
+  one.
 
 
 ## The top bar bell

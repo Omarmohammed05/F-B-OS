@@ -439,6 +439,10 @@ export type StaffMember = {
   onboarded: boolean;
   is_active: boolean;
   restaurant_id: number;
+  /** The location the person works in; 0 is store-wide (admin, owner). */
+  branch_id: number;
+  branch_ar: string;
+  branch_en: string;
   created_at: string | null;
 };
 
@@ -463,6 +467,8 @@ export type StaffInput = {
   password?: string;
   /** The restaurant the account belongs to; admins only. */
   restaurant_id?: number;
+  /** The location the person works in; empty means the active branch. */
+  branch_id?: number;
 };
 
 export type RestaurantInput = { name_ar: string; name_en: string };
@@ -737,6 +743,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  updateBranch: (id: number, body: Partial<BranchInput>) =>
+    request<BranchesData>(`/api/branches/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteBranch: (id: number) =>
+    request<BranchesData>(`/api/branches/${id}`, { method: 'DELETE' }),
   activateBranch: (id: number) =>
     request<BranchesData>(`/api/branches/${id}/activate`, { method: 'POST' }),
   setup: () => request<SetupState>('/api/setup'),
@@ -831,10 +844,15 @@ export const api = {
   report: (days: number) => request<ReportData>(`/api/reports?days=${days}`),
   reportCsvUrl: (days: number) => `/api/reports/export.csv?days=${days}`,
 
-  team: (restaurantId?: number) =>
-    request<TeamData>(
-      restaurantId ? `/api/team?restaurant_id=${restaurantId}` : '/api/team',
-    ),
+  team: (restaurantId?: number, branchId?: number) => {
+    const query = [
+      restaurantId ? `restaurant_id=${restaurantId}` : '',
+      branchId ? `branch_id=${branchId}` : '',
+    ]
+      .filter(Boolean)
+      .join('&');
+    return request<TeamData>(query ? `/api/team?${query}` : '/api/team');
+  },
   restaurants: () => request<RestaurantsData>('/api/restaurants'),
   createRestaurant: (body: RestaurantCreateInput) =>
     request<RestaurantsData>('/api/restaurants', {

@@ -213,6 +213,9 @@ class Staff(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    # The location this person works in. 0 is the store itself, which is what an
+    # admin and the platform owner are: they sit above every branch.
+    branch_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
     name: Mapped[str] = mapped_column(String(120))
     phone: Mapped[str] = mapped_column(String(40), default="")
     # owner (the platform, across restaurants) / admin (one restaurant) /
