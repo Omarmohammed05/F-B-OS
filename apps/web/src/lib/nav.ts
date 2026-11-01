@@ -2,6 +2,7 @@ import {
   BarChart3,
   Boxes,
   Building2,
+  ClipboardCheck,
   LayoutDashboard,
   Monitor,
   ReceiptText,
@@ -56,6 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: 'nav.group.operations',
     items: [
+      { to: '/checklists', labelKey: 'nav.checklists', icon: ClipboardCheck },
       { to: '/inventory', labelKey: 'nav.inventory', icon: Boxes },
       { to: '/customers', labelKey: 'nav.customers', icon: Users },
       { to: '/loyalty', labelKey: 'nav.loyalty', icon: Sparkles },

@@ -15,6 +15,7 @@ from .models import SetupTask, Tenant
 from .routes import audit as audit_routes
 from .routes import auth as auth_routes
 from .routes import branches as branch_routes
+from .routes import checklists as checklist_routes
 from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
 from .routes import loyalty as loyalty_routes
@@ -80,6 +81,7 @@ app.include_router(setting_routes.router)
 app.include_router(audit_routes.router)
 app.include_router(notification_routes.router)
 app.include_router(branch_routes.router)
+app.include_router(checklist_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

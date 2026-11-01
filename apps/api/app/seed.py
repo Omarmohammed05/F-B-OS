@@ -9,6 +9,7 @@ from .db import Base, SessionLocal, engine, ensure_columns
 from .models import (
     ActivityRow,
     Branch,
+    ChecklistTask,
     Customer,
     DailyMetric,
     Ingredient,
@@ -199,6 +200,20 @@ DEMO_LOGINS = [
     ("Dina Farouk", "manager", "manager"),
     ("Youssef Adel", "cashier", "cashier"),
     ("Karim Nabil", "kitchen", "kitchen"),
+]
+
+# The store's standing daily checklist: (Arabic, English, role). An empty role
+# puts the item on everybody's list; otherwise only that position sees it.
+CHECKLIST_TASKS = [
+    ("فحص الزي والنظافة", "Uniform and hygiene check", ""),
+    ("عدّ درج النقد عند الفتح", "Count the opening cash drawer", "cashier"),
+    ("تنظيف شاشة الكاشير وماكينة البطاقات", "Wipe the POS screen and card reader", "cashier"),
+    ("إقفال الوردية وتسليم الدرج", "Close the shift and hand over the drawer", "cashier"),
+    ("قياس حرارة الثلاجة وتسجيلها", "Check and log the fridge temperature", "kitchen"),
+    ("تعليم وتأريخ حاويات التحضير", "Label and date the prep containers", "kitchen"),
+    ("تنظيف الشواية والشفاط", "Clean the grill and the hood", "kitchen"),
+    ("مراجعة تقرير مبيعات أمس", "Review yesterday's sales report", "manager"),
+    ("مراجعة المخزون مقابل الحد الأدنى", "Check stock against par levels", "manager"),
 ]
 
 DEMO_ORDERS = [
@@ -517,6 +532,20 @@ def seed() -> None:
             member.is_active = True
             member.username = username
             member.password_hash = hash_password(ADMIN_PASSWORD)
+
+        # The standing checklist, matched by English title so a partial seed
+        # completes without duplicating tasks.
+        if db.query(ChecklistTask).filter_by(tenant_id=tenant.id).count() == 0:
+            for sort, (title_ar, title_en, role) in enumerate(CHECKLIST_TASKS):
+                db.add(
+                    ChecklistTask(
+                        tenant_id=tenant.id,
+                        title_ar=title_ar,
+                        title_en=title_en,
+                        role=role,
+                        sort=sort,
+                    )
+                )
 
         if db.query(Order).filter_by(tenant_id=tenant.id).count() == 0:
             catalog = {

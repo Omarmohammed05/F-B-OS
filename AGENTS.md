@@ -462,6 +462,56 @@ service.
   (reverse proxy or CDN), not in `vite.config.ts` where it would fight HMR.
 
 
+## Checklists (per person, per day)
+
+- Two new tables, so plain `create_all` covers them — there is no
+  `ADDITIVE_COLUMNS` entry: `checklist_tasks` (the store's standing list, with
+  `role` scoping an item to one position and `''` meaning everybody) and
+  `checklist_checks` (one row per member, task and day).
+- **A tick exists only while the box is ticked**: ticking inserts a row,
+  unticking deletes it, so "not done" needs no second meaning and the table stays
+  small. `UniqueConstraint(tenant_id, task_id, staff_id, work_date)` makes a double
+  tap idempotent — `POST /api/checklists/checks` is safe to repeat either way.
+- `done_by` records who ticked it (the member, or the manager on shift).
+- Who may do what: anyone signed in reads the board; a member may tick **only
+  their own** list; `SUPERVISOR_ROLES` (manager, admin, owner) may tick anyone's;
+  item create/edit/delete needs `auth.require_admin`. This is the first place a
+  role narrows what an operational endpoint does (see `SECURITY.md` §3.3).
+- The platform `owner` is **not** on a restaurant's checklist
+  (`BOARD_ROLES` excludes it); an inactive member disappears from the day board
+  but still appears in a week/month report they had ticks in, so a past week never
+  changes. Checklists are store-wide, not branch-scoped: they follow the person.
+- An item with ticks cannot be deleted (**409**); switch it off (`is_active`)
+  instead, which removes it from new lists and keeps the record. `has_checks` in
+  the payload drives the disabled delete in the sheet — same pattern as an
+  ingredient with stock history.
+- Report math: `expected = (active items that apply to the role) × (days of the
+  period that have actually happened)`, so a month opened on the 3rd is not
+  "failing" 27 future days. A future day carries `expected: 0` and renders as an
+  empty dashed cell. `percent` is the rounded share of done over expected.
+- Endpoints: `GET /api/checklists?date=YYYY-MM-DD` (the day board: members, their
+  items, plus the whole task list with `has_checks`),
+  `POST /api/checklists/checks` (`{task_id, staff_id, date?, done}`, answers the
+  whole day payload — 403 when a non-supervisor ticks someone else, 400 when the
+  item is not on that person's list), `GET /api/checklists/report?period=week|month&anchor=…`,
+  `GET/POST /api/checklists/tasks`, `PATCH/DELETE /api/checklists/tasks/{id}`.
+  A bad `date`/`period` is **422**; an unknown task or member is **404**.
+- UI route: `/checklists` (`pages/ChecklistPage.tsx`) sits in the Operations nav
+  group — a Day / Week / Month segmented control with prev/next and a date input,
+  the completion card, then either the per-person cards
+  (`components/checklists/DayBoard.tsx`, a 44px box per item) or the day-by-day
+  report (`components/checklists/PeriodReport.tsx`). Only an admin sees
+  **إدارة البنود**, which opens `components/checklists/ChecklistItemsSheet.tsx`
+  (add, edit, switch off, delete). Closing the sheet rereads the day so the new
+  items reach every list.
+- The seed adds the nine demo items in `CHECKLIST_TASKS` only when the store has
+  none; a restaurant created from `/restaurants` starts with an empty checklist and
+  the page's empty state, which is expected.
+- Verify by hand: tick one box on your own card (`1/4`, the summary percent
+  rises), untick it (back to the baseline), switch to Week and Month and read the
+  per-day strips, then — as an admin — add a scratch item, see it appear, and
+  remove it again. Leave 9 items and 0 ticks behind.
+
 ## Branches (locations)
 
 - `branches` holds one row per location; `tenants.active_branch_id` is the one the

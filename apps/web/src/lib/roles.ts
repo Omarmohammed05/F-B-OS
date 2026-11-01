@@ -37,3 +37,12 @@ export function isOwner(role: StaffRole | undefined): boolean {
 export function canManageStore(role: StaffRole | undefined): boolean {
   return role === 'admin' || role === 'owner';
 }
+
+/**
+ * Who may tick a teammate's checklist box and read the week/month report: the
+ * manager on shift, and the admin or owner above them. Everyone else ticks
+ * only their own list.
+ */
+export function canSupervise(role: StaffRole | undefined): boolean {
+  return role === 'manager' || role === 'admin' || role === 'owner';
+}

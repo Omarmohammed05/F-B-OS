@@ -461,6 +461,68 @@ export type StaffInput = {
 
 export type RestaurantInput = { name_ar: string; name_en: string };
 
+/** A role a checklist item can be scoped to; '' is everybody's list. */
+export type ChecklistRole = '' | Exclude<StaffRole, 'owner'>;
+
+export type ChecklistTask = {
+  id: number;
+  title_ar: string;
+  title_en: string;
+  role: ChecklistRole;
+  sort: number;
+  is_active: boolean;
+  /** Ticked at least once, so it stays as history instead of being deleted. */
+  has_checks: boolean;
+};
+
+export type ChecklistMember = {
+  id: number;
+  name: string;
+  role: StaffRole;
+  done: number;
+  total: number;
+  items: { task_id: number; done: boolean }[];
+};
+
+export type ChecklistDay = {
+  date: string;
+  tasks: ChecklistTask[];
+  members: ChecklistMember[];
+  summary: { done: number; total: number; members: number; complete: number };
+};
+
+export type ChecklistPeriod = 'day' | 'week' | 'month';
+
+export type ChecklistReportMember = {
+  id: number;
+  name: string;
+  role: StaffRole;
+  is_active: boolean;
+  done: number;
+  expected: number;
+  percent: number;
+  days: { date: string; done: number; expected: number }[];
+};
+
+export type ChecklistReport = {
+  period: ChecklistPeriod;
+  start: string;
+  end: string;
+  counted_days: number;
+  tasks_total: number;
+  days: string[];
+  members: ChecklistReportMember[];
+  summary: { done: number; expected: number; percent: number };
+};
+
+export type ChecklistTaskInput = {
+  title_ar: string;
+  title_en: string;
+  role: ChecklistRole;
+  sort?: number;
+  is_active?: boolean;
+};
+
 export type AuthUser = {
   id: number;
   name: string;
@@ -714,6 +776,37 @@ export const api = {
     }),
   deleteStaff: (id: number) =>
     request<TeamData>(`/api/team/${id}`, { method: 'DELETE' }),
+
+  checklist: (date?: string) =>
+    request<ChecklistDay>(`/api/checklists${date ? `?date=${date}` : ''}`),
+  checklistReport: (period: ChecklistPeriod, anchor?: string) =>
+    request<ChecklistReport>(
+      `/api/checklists/report?period=${period}${anchor ? `&anchor=${anchor}` : ''}`,
+    ),
+  toggleChecklistItem: (body: {
+    task_id: number;
+    staff_id: number;
+    date: string;
+    done: boolean;
+  }) =>
+    request<ChecklistDay>('/api/checklists/checks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createChecklistTask: (body: ChecklistTaskInput) =>
+    request<{ tasks: ChecklistTask[] }>('/api/checklists/tasks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateChecklistTask: (id: number, body: Partial<ChecklistTaskInput>) =>
+    request<{ tasks: ChecklistTask[] }>(`/api/checklists/tasks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteChecklistTask: (id: number) =>
+    request<{ tasks: ChecklistTask[] }>(`/api/checklists/tasks/${id}`, {
+      method: 'DELETE',
+    }),
 
   settings: () => request<SettingsData>('/api/settings'),
   updateSettings: (body: SettingsInput) =>

@@ -1,6 +1,16 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -354,3 +364,49 @@ class LoyaltyCard(Base):
     rewards_redeemed: Mapped[int] = mapped_column(Integer, default=0)
     joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_stamp_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ChecklistTask(Base):
+    """A standing item on the store's daily checklist.
+
+    `role` scopes the item to one position (count the drawer is not the
+    kitchen's job); an empty role puts it on everybody's list.
+    """
+
+    __tablename__ = "checklist_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    title_ar: Mapped[str] = mapped_column(String(160))
+    title_en: Mapped[str] = mapped_column(String(160))
+    role: Mapped[str] = mapped_column(String(16), default="")
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ChecklistCheck(Base):
+    """One member's tick on one task for one day.
+
+    A row exists only while the box is ticked — unticking deletes it — so the
+    table stays small and "not done" needs no second meaning. The unique
+    constraint keeps a double tap from writing two rows.
+    """
+
+    __tablename__ = "checklist_checks"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "task_id", "staff_id", "work_date", name="ux_checklist_checks"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("checklist_tasks.id"), index=True
+    )
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff.id"), index=True)
+    work_date: Mapped[date] = mapped_column(Date, index=True)
+    # Who ticked it: the member themselves, or the manager on shift.
+    done_by: Mapped[int] = mapped_column(Integer, default=0)
+    done_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
