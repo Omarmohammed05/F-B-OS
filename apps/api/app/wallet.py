@@ -30,7 +30,13 @@ API_ROOT = "https://walletobjects.googleapis.com/walletobjects/v1"
 SAVE_ROOT = "https://pay.google.com/gp/v/save/"
 
 CLASS_SUFFIX = "sufra_loyalty"
-LOGO_PATH = "sufra-wallet-badge.png"
+# Program logo for the pass header (square). Google fetches pass images itself, so
+# it must be a public HTTPS URL — this is the platform asset library copy, which
+# stays reachable outside the sandbox. GOOGLE_WALLET_LOGO_URL still overrides it.
+LOGO_URL = (
+    "https://media.base44.com/images/public/6ae64905f0b771c46cdaebc5/"
+    "2f6b06ff3_generated_c0a22deb.png"
+)
 # Pattern art for the pass face (a 1032x336 band) and the details view (a square
 # ornament tile), served from the web app's public folder.
 HERO_PATH = "sufra-wallet-hero.png"
@@ -92,7 +98,7 @@ def _asset_url(name: str) -> str:
 
 def _logo_url() -> str:
     explicit = os.environ.get("GOOGLE_WALLET_LOGO_URL", "").strip()
-    return explicit or _asset_url(LOGO_PATH)
+    return explicit or LOGO_URL
 
 
 def config() -> dict | None:
@@ -118,8 +124,6 @@ def problem() -> str | None:
             "GOOGLE_WALLET_SERVICE_ACCOUNT is not the service account key JSON "
             "(an email address or another value was supplied)"
         )
-    if not _logo_url():
-        return "no public logo (set GOOGLE_WALLET_LOGO_URL or BASE44_PUBLIC_HOST_SUFFIX)"
     return None
 
 

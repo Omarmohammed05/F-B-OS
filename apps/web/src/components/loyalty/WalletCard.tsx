@@ -16,6 +16,11 @@ const INK = '#14110C';
 const GOLD_FIELD =
   'linear-gradient(145deg, #E3C57C 0%, #C6A24A 36%, #A8842F 70%, #856520 100%)';
 
+// The same program logo the Google Wallet class carries (`LOGO_URL` in
+// apps/api/app/wallet.py), so the in-app card and the saved pass match.
+const PROGRAM_LOGO =
+  'https://media.base44.com/images/public/6ae64905f0b771c46cdaebc5/2f6b06ff3_generated_c0a22deb.png';
+
 const ORNAMENT =
   '50,4 59.2,27.8 82.5,17.5 72.2,40.8 96,50 72.2,59.2 82.5,82.5 59.2,72.2 50,96 40.8,72.2 17.5,82.5 27.8,59.2 4,50 27.8,40.8 17.5,17.5 40.8,27.8';
 
@@ -55,7 +60,7 @@ export default function WalletCard({ storeName, member, program }: Props) {
       <div className="relative flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <img
-            src="/sufra-wallet-badge.png"
+            src={PROGRAM_LOGO}
             alt=""
             className="h-7 w-7 shrink-0"
           />

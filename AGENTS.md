@@ -320,10 +320,12 @@ service.
   Wallet button always has a reason in `docker compose -f docker-compose.base44.yml
   logs api`.
 - `programLogo` must be a public HTTPS image, because Google fetches it itself.
-  `GOOGLE_WALLET_LOGO_URL` overrides it; otherwise the sandbox falls back to
-  `https://3000-$BASE44_PUBLIC_HOST_SUFFIX/sufra-wallet-badge.png`, served from
-  `apps/web/public/sufra-wallet-badge.png` (an 8-point khatim ornament in espresso
-  `#14110C` on transparent, 660×660, generated once with Pillow).
+  `LOGO_URL` in `wallet.py` is the permanent platform asset-library copy (the
+  Khatim Seal: an 8-point cream `#F4F0E4` star of interlocking gold `#A68748`
+  ribbons on espresso `#1D1B16`, square), and `GOOGLE_WALLET_LOGO_URL` overrides
+  it. Older installs may still have `apps/web/public/sufra-wallet-badge.png`, which
+  nothing reads now; the in-app `WalletCard` draws the same asset URL so the two
+  faces match. An override is only needed when the logo moves somewhere else.
 - Pass styling is premium gold: `GOLD` (`#A8842F`) is the class field and the dark
   badge sits on it; the object modules are Arabic (`نقاط`, `الأختام`, `المكافأة`).
 - Pattern art is two more public images, generated once with a throwaway pure-Python
