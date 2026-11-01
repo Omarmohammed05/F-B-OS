@@ -812,6 +812,13 @@ const en = {
   'm.failed': 'That order could not be sent. Try again.',
   'm.unavailable': 'Something on that order just ran out. Check the menu.',
   'm.throttled': 'Too many orders from here. Wait a minute.',
+  'm.search': 'Search the menu',
+  'm.explore': 'Explore the menu',
+  'm.exploreHint': 'Tap a section to jump to it',
+  'm.viewAll': 'View the full menu',
+  'm.items': '{count} items',
+  'm.noResults': 'Nothing on the menu matches that search.',
+  'm.footer': 'Menu',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -1606,6 +1613,13 @@ const ar: Record<TranslationKey, string> = {
   'm.failed': 'تعذر إرسال الطلب. حاول مرة أخرى.',
   'm.unavailable': 'نفد أحد الأصناف في هذه الأثناء. راجع القائمة.',
   'm.throttled': 'طلبات كثيرة من هنا. انتظر دقيقة.',
+  'm.search': 'ابحث في القائمة',
+  'm.explore': 'استكشف القائمة',
+  'm.exploreHint': 'اختر قسمًا للانتقال إليه',
+  'm.viewAll': 'عرض المنيو كامل',
+  'm.items': '{count} صنف',
+  'm.noResults': 'لا يوجد صنف في القائمة مطابق لبحثك.',
+  'm.footer': 'قائمة الطعام',
 };
 
 export type Lang = 'ar' | 'en';

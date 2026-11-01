@@ -26,6 +26,28 @@
   --line: #38383a;
 }
 
+/*
+ * The guest menu (`/m/:token`) is its own brand surface, not an app screen: a
+ * warm near-black page with a brass accent, so the palette is scoped to the
+ * wrapper instead of following the dashboard's theme or the tenant's accent.
+ */
+.guest-menu {
+  --bg: #0b0b0c;
+  --surface: #151517;
+  --surface-2: #232326;
+  --text: #ffffff;
+  --text-2: #a2a2a8;
+  --line: #26262a;
+  --accent: #d1a05e;
+  --accent-ink: #17110a;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.guest-menu .card {
+  box-shadow: none;
+}
+
 html,
 body,
 #root {

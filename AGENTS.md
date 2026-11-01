@@ -648,8 +648,18 @@ service.
   `@media print` block in `index.css` hides everything else and forces dark ink on
   white, so the stand prints legibly in dark mode too.
 - The guest page `/m/:token` (`pages/PublicMenuPage.tsx`) renders outside the shell
-  with no session, follows the store's `default_language` and accent colour, and
-  shows subtotal / `tax_rate` / total before sending. An unknown token or a
+  with no session, follows the store's `default_language`, and shows subtotal /
+  `tax_rate` / total before sending. It is its own brand surface: the
+  `.guest-menu` block in `index.css` re-points the design tokens (`--bg`
+  `#0b0b0c`, `--surface` `#151517`, `--accent` `#d1a05e`, …) for that wrapper
+  only, so the guest menu is always the warm dark menu board and never inherits
+  the dashboard theme or `tenants.accent_color` (the page no longer writes
+  `--accent` at load). Its pieces: `components/public/Ornament.tsx` (the brass
+  mark), `ExploreGrid.tsx` (square category tiles that jump to a section) and
+  `MenuItemRow.tsx` (thumbnail, price in brass, add / stepper). A sticky rail of
+  category chips, an `IntersectionObserver` that highlights the section in view,
+  and a search field that filters both languages' names are page-local state —
+  no new endpoint. An unknown token or a
   blocked/removed restaurant answers **404** and the page says the link is not
   active.
 - Verify: sign in and read the link from `/api/menu/qr`, then call
