@@ -47,6 +47,11 @@ ADDITIVE_COLUMNS = [
     ("tenants", "shift_start", "VARCHAR(5) NOT NULL DEFAULT ''"),
     ("tenants", "shift_grace_minutes", "INTEGER NOT NULL DEFAULT 10"),
     ("tenants", "late_deduction_rate", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    # A person's own shift start and grace window, so people on different
+    # shifts are measured against their own time. Empty / NULL means the
+    # store's rule applies.
+    ("staff", "shift_start", "VARCHAR(5) NOT NULL DEFAULT ''"),
+    ("staff", "shift_grace_minutes", "INTEGER NULL"),
 ]
 
 ADDITIVE_INDEXES = [

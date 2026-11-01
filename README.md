@@ -46,7 +46,11 @@ tablet as a PWA.
   tablet. Looking at an earlier day shows that day's board. An admin sets the
   shift start and its grace period in Settings, and every late minute after that
   is deducted from the salary at a rate the admin chooses — the board shows each
-  person's lateness and the day's total deduction.
+  person's lateness and the day's total deduction. A manager or an admin is never
+  deducted, only the staff they run the shift with. Because people work different
+  shifts, the **Month** tab gives each person their own start time and grace
+  window (a manager or admin sets them right in the table), and it collects the
+  whole month in one place: days worked, hours, late days and the money taken off.
 - **Installable app** — the web app ships a manifest and a service worker, so it
   can be added to a phone or tablet's home screen and opens full screen. Losing
   the connection shows the app's own offline page instead of the browser's.

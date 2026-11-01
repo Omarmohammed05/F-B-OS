@@ -537,6 +537,11 @@ export type AttendanceMember = {
   open_since: string | null;
   minutes: number;
   shifts: number;
+  /** Their own shift time; empty / null means the store's rule applies. */
+  shift_start: string;
+  grace_minutes: number | null;
+  /** A supervisor's lateness is never deducted. */
+  exempt: boolean;
   late_minutes: number;
   deduction: number;
 };
@@ -564,6 +569,46 @@ export type AttendanceDay = {
     late_minutes: number;
     deduction: number;
   };
+};
+
+/** One person's month, as the monthly table reads it. */
+export type AttendanceMonthMember = {
+  id: number;
+  name: string;
+  role: StaffRole;
+  is_active: boolean;
+  shift_start: string;
+  grace_minutes: number | null;
+  exempt: boolean;
+  days: number;
+  shifts: number;
+  minutes: number;
+  late_days: number;
+  late_minutes: number;
+  deduction: number;
+};
+
+export type AttendanceMonth = {
+  month: string;
+  start: string;
+  end: string;
+  rules: AttendanceRules;
+  members: AttendanceMonthMember[];
+  summary: {
+    members: number;
+    days: number;
+    minutes: number;
+    late_days: number;
+    late_minutes: number;
+    deduction: number;
+  };
+};
+
+/** A person's own shift window; empty / null hands them back to the store's. */
+export type AttendanceRuleInput = {
+  shift_start: string;
+  grace_minutes: number | null;
+  month?: string;
 };
 
 export type AuthUser = {
@@ -869,6 +914,15 @@ export const api = {
   checkOut: (body: { staff_id?: number; date?: string } = {}) =>
     request<AttendanceDay>('/api/attendance/check-out', {
       method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  attendanceMonth: (month?: string) =>
+    request<AttendanceMonth>(
+      `/api/attendance/month${month ? `?month=${month}` : ''}`,
+    ),
+  updateAttendanceRule: (staffId: number, body: AttendanceRuleInput) =>
+    request<AttendanceMonth>(`/api/attendance/rules/${staffId}`, {
+      method: 'PATCH',
       body: JSON.stringify(body),
     }),
 

@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import AttendanceBoard from '../components/attendance/AttendanceBoard';
+import AttendanceMonthTable from '../components/attendance/AttendanceMonthTable';
 import AttendancePunch from '../components/attendance/AttendancePunch';
 import LateRuleBar from '../components/attendance/LateRuleBar';
 import { api, type AttendanceDay, type AttendanceMember } from '../lib/api';
@@ -33,6 +34,7 @@ export default function AttendancePage() {
   const supervises = canSupervise(user?.role);
   const manages = canManageStore(user?.role);
 
+  const [mode, setMode] = useState<'day' | 'month'>('day');
   const [anchor, setAnchor] = useState(todayIso);
   const [day, setDay] = useState<AttendanceDay | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,7 +89,36 @@ export default function AttendancePage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="tablist"
+            aria-label={t('attendance.title')}
+            className="inline-flex rounded-field border border-line bg-surface-2 p-1"
+          >
+            {(['day', 'month'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={mode === value}
+                onClick={() => setMode(value)}
+                className={`h-9 rounded-[10px] px-3 text-[13px] font-semibold transition-colors duration-150 ${
+                  mode === value
+                    ? 'bg-surface text-[color:var(--accent)]'
+                    : 'text-ink-2'
+                }`}
+              >
+                {t(
+                  value === 'day'
+                    ? 'attendance.viewDay'
+                    : 'attendance.viewMonth',
+                )}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'month' ? null : (
+            <>
           <button
             type="button"
             aria-label={t('attendance.prev')}
@@ -130,9 +161,15 @@ export default function AttendancePage() {
               {t('attendance.today')}
             </button>
           )}
+            </>
+          )}
         </div>
       </div>
 
+      {mode === 'month' ? (
+        <AttendanceMonthTable canEdit={supervises} />
+      ) : (
+        <>
       <p className="text-[13px] font-medium text-ink-2">
         {formatDayLong(lang, anchor)}
       </p>
@@ -245,6 +282,8 @@ export default function AttendancePage() {
               />
             </div>
           )}
+        </>
+      )}
         </>
       )}
     </div>

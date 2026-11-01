@@ -217,3 +217,141 @@ def test_bad_date_is_rejected(client):
 
 def test_attendance_needs_a_session(anonymous):
     assert anonymous.get("/api/attendance").status_code == 401
+
+
+@pytest.fixture()
+def manager(db):
+    """A manager of our own: on the board, but never fined for being late."""
+    tenant = db.query(Tenant).first()
+    mark = db.query(func.max(AuditLog.id)).scalar() or 0
+    row = Staff(
+        tenant_id=tenant.id,
+        name=scratch("Manager"),
+        phone="",
+        role="manager",
+        is_active=True,
+    )
+    db.add(row)
+    db.commit()
+    yield row
+    db.execute(
+        text("DELETE FROM attendance_shifts WHERE staff_id = :id"), {"id": row.id}
+    )
+    db.execute(text("DELETE FROM audit_logs WHERE id > :mark"), {"mark": mark})
+    db.execute(text("DELETE FROM staff WHERE id = :id"), {"id": row.id})
+    db.commit()
+
+
+def test_a_manager_is_never_deducted(client, manager):
+    """The store's rule prices the lateness, but a supervisor is not fined."""
+    saved_rule = client.get("/api/settings").json()["attendance"]
+    arrival = find(
+        client.post("/api/attendance/check-in", json={"staff_id": manager.id}).json(),
+        manager.id,
+    )
+    arrived = datetime.fromisoformat(arrival["checked_in_at"])
+    start = arrived - timedelta(minutes=30)
+    if start.date() != arrived.date():
+        pytest.skip("the check-in is too close to midnight for this rule")
+
+    try:
+        client.patch(
+            "/api/settings",
+            json={
+                "shift_start": start.strftime("%H:%M"),
+                "grace_minutes": 5,
+                "deduction_per_minute": 2,
+            },
+        )
+        row = find(client.get("/api/attendance").json(), manager.id)
+        assert row["exempt"] is True
+        assert row["late_minutes"] == 25
+        assert row["deduction"] == 0
+    finally:
+        client.patch("/api/settings", json=saved_rule)
+
+
+def test_a_person_has_their_own_shift_time(client, attendee):
+    """Their own start and grace win over the store's, and can be cleared."""
+    saved_rule = client.get("/api/settings").json()["attendance"]
+    arrival = find(
+        client.post("/api/attendance/check-in", json={"staff_id": attendee.id}).json(),
+        attendee.id,
+    )
+    arrived = datetime.fromisoformat(arrival["checked_in_at"])
+    start = arrived - timedelta(minutes=30)
+    if start.date() != arrived.date():
+        pytest.skip("the check-in is too close to midnight for this rule")
+    month = arrived.date().isoformat()[:7]
+    own = f"/api/attendance/rules/{attendee.id}"
+
+    try:
+        client.patch(
+            "/api/settings",
+            json={
+                "shift_start": start.strftime("%H:%M"),
+                "grace_minutes": 5,
+                "deduction_per_minute": 2,
+            },
+        )
+        assert find(client.get("/api/attendance").json(), attendee.id)["deduction"] == 50
+
+        # Their own later start, with no grace: nothing late, nothing deducted.
+        saved = client.patch(
+            own,
+            json={
+                "shift_start": arrived.strftime("%H:%M"),
+                "grace_minutes": 0,
+                "month": month,
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        row = find(saved.json(), attendee.id)
+        assert row["shift_start"] == arrived.strftime("%H:%M")
+        assert row["grace_minutes"] == 0
+        assert row["late_minutes"] == 0 and row["deduction"] == 0
+        assert find(client.get("/api/attendance").json(), attendee.id)[
+            "late_minutes"
+        ] == 0
+
+        # Emptying both hands them back to the store's rule.
+        cleared = client.patch(own, json={"shift_start": "", "grace_minutes": None})
+        assert cleared.status_code == 200, cleared.text
+        assert find(client.get("/api/attendance").json(), attendee.id)["deduction"] == 50
+    finally:
+        client.patch(own, json={"shift_start": "", "grace_minutes": None})
+        client.patch("/api/settings", json=saved_rule)
+
+    # A window that cannot exist is refused rather than stored.
+    assert client.patch(own, json={"grace_minutes": 500}).status_code == 422
+    assert client.patch(own, json={"shift_start": "25:00"}).status_code == 422
+
+
+def test_only_a_supervisor_sets_a_shift_time(own_session, attendee):
+    denied = own_session.patch(
+        f"/api/attendance/rules/{attendee.id}", json={"shift_start": "09:00"}
+    )
+    assert denied.status_code == 403
+
+
+def test_the_month_collects_every_person(client, attendee):
+    client.post("/api/attendance/check-in", json={"staff_id": attendee.id})
+    month = date.today().isoformat()[:7]
+    payload = client.get(f"/api/attendance/month?month={month}").json()
+    assert payload["month"] == month
+    assert set(payload["summary"]) == {
+        "members",
+        "days",
+        "minutes",
+        "late_days",
+        "late_minutes",
+        "deduction",
+    }
+    row = find(payload, attendee.id)
+    assert row["days"] == 1 and row["shifts"] == 1 and row["minutes"] >= 0
+    assert payload["summary"]["days"] >= 1
+    # A month nobody could have worked yet is empty, not an error.
+    assert client.get("/api/attendance/month?month=1999-01").json()["summary"][
+        "days"
+    ] == 0
+    assert client.get("/api/attendance/month?month=2026-13").status_code == 422

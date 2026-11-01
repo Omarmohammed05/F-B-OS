@@ -225,6 +225,10 @@ class Staff(Base):
     # Set when the first sign-in tour is finished or skipped.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # This person's own shift time, for the ones who do not start with the
+    # store: an empty start (or empty grace) means "use the store's rule".
+    shift_start: Mapped[str] = mapped_column(String(5), default="")
+    shift_grace_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

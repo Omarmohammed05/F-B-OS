@@ -9,15 +9,23 @@ the closing timestamp of the row that was opened.
 Anyone signed in punches their own clock. A manager, an admin or the owner may
 punch for somebody on the same team, exactly like the checklist board.
 
-Lateness is derived per request from `tenants.shift_start` + the grace window:
-the day's first arrival past that moment is late, and every late minute costs
-`late_deduction_rate`. Nothing is stored, so editing the rule reprices the day.
+Lateness is derived per request from the person's own shift start and grace
+window (`staff.shift_start` / `staff.shift_grace_minutes`), falling back to the
+store's rule on `tenants` when they hold none: the day's first arrival past that
+moment is late, and every late minute costs `late_deduction_rate`. Nothing is
+stored, so editing a rule reprices the day.
+
+Supervisors — the store admin and the manager — are never fined for arriving
+late: their hours are recorded, their deduction is 0. `GET
+/api/attendance/month` adds up a whole month per person, and
+`PATCH /api/attendance/rules/{staff_id}` gives one person their own shift time
+(a manager may do that too: it is shift planning, not store settings).
 """
 
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import audit, auth
@@ -31,6 +39,9 @@ router = APIRouter(prefix="/api/attendance", tags=["attendance"])
 SHIFT_ROLES = ("admin", "manager", "cashier", "kitchen")
 # Who may punch a teammate in or out.
 SUPERVISOR_ROLES = ("admin", "owner", "manager")
+# They clock in like everyone else, but a late arrival never cuts their salary:
+# they are the ones running the shift.
+EXEMPT_ROLES = ("admin", "manager")
 
 
 def parse_day(value: str | None) -> date:
@@ -63,6 +74,21 @@ def rules_of(tenant: Tenant) -> dict:
     }
 
 
+def member_rules(member: Staff, tenant: Tenant) -> dict:
+    """One person's rule: their own shift time first, the store's otherwise."""
+    return {
+        "shift_start": member.shift_start or tenant.shift_start,
+        "grace_minutes": (
+            tenant.shift_grace_minutes
+            if member.shift_grace_minutes is None
+            else member.shift_grace_minutes
+        ),
+        "deduction_per_minute": tenant.late_deduction_rate,
+        "currency": tenant.currency,
+        "exempt": member.role in EXEMPT_ROLES,
+    }
+
+
 def late_minutes_of(rows: list[AttendanceShift], rules: dict) -> int:
     """Minutes past shift start + grace, measured on the day's first arrival.
 
@@ -79,9 +105,17 @@ def late_minutes_of(rows: list[AttendanceShift], rules: dict) -> int:
     return max(0, int((first - due).total_seconds() // 60))
 
 
+def deduction_of(late: int, rules: dict) -> float:
+    """What those late minutes cost — nothing at all for a supervisor."""
+    if rules["exempt"]:
+        return 0
+    return round(late * rules["deduction_per_minute"], 2)
+
+
 def serialize_member(
-    member: Staff, rows: list[AttendanceShift], now: datetime, rules: dict
+    member: Staff, rows: list[AttendanceShift], now: datetime, tenant: Tenant
 ) -> dict:
+    rules = member_rules(member, tenant)
     rows = sorted(rows, key=lambda row: row.checked_in_at)
     opened = next((row for row in rows if row.checked_out_at is None), None)
     closed = [row for row in rows if row.checked_out_at is not None]
@@ -101,9 +135,14 @@ def serialize_member(
         "open_since": opened.checked_in_at.isoformat() if opened else None,
         "minutes": minutes_of(rows, now),
         "shifts": len(rows),
+        # This person's own shift time (empty / null = the store's), so the
+        # board can name it and an admin can edit it in one place.
+        "shift_start": member.shift_start,
+        "grace_minutes": member.shift_grace_minutes,
+        "exempt": rules["exempt"],
         # Lateness today and what it takes off the salary, both derived.
         "late_minutes": late,
-        "deduction": round(late * rules["deduction_per_minute"], 2),
+        "deduction": deduction_of(late, rules),
     }
 
 
@@ -144,16 +183,15 @@ def day_payload(db: Session, tenant: Tenant, work_date: date, viewer: Staff) -> 
         if gone is not None:
             known[staff_id] = gone
 
-    rules = rules_of(tenant)
     members = [
-        serialize_member(member, by_staff.get(member.id, []), now, rules)
+        serialize_member(member, by_staff.get(member.id, []), now, tenant)
         for member in sorted(known.values(), key=lambda row: row.id)
     ]
 
     return {
         "date": work_date.isoformat(),
         "is_today": work_date == date.today(),
-        "rules": rules,
+        "rules": rules_of(tenant),
         "me": next((row for row in members if row["id"] == viewer.id), None),
         "members": members,
         "summary": {
@@ -166,6 +204,178 @@ def day_payload(db: Session, tenant: Tenant, work_date: date, viewer: Staff) -> 
             "deduction": round(sum(row["deduction"] for row in members), 2),
         },
     }
+
+
+def parse_month(value: str | None) -> str:
+    """A `YYYY-MM` key; a missing one is the month we are living in."""
+    if not value:
+        today = date.today()
+        return f"{today.year:04d}-{today.month:02d}"
+    try:
+        first = date.fromisoformat(f"{value}-01")
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="A month is YYYY-MM."
+        ) from None
+    return f"{first.year:04d}-{first.month:02d}"
+
+
+def month_bounds(month: str) -> tuple[date, date]:
+    first = date.fromisoformat(f"{month}-01")
+    following = date(first.year + (first.month == 12), first.month % 12 + 1, 1)
+    return first, following - timedelta(days=1)
+
+
+def month_member(
+    member: Staff, rows: list[AttendanceShift], now: datetime, tenant: Tenant
+) -> dict:
+    """One person's month: the days they came, hours, lateness and its price."""
+    rules = member_rules(member, tenant)
+    days: dict[date, list[AttendanceShift]] = {}
+    for row in rows:
+        days.setdefault(row.work_date, []).append(row)
+    late_per_day = [late_minutes_of(day_rows, rules) for day_rows in days.values()]
+    late = sum(late_per_day)
+    return {
+        "id": member.id,
+        "name": member.name,
+        "role": member.role,
+        "is_active": member.is_active,
+        # Their own window (empty / null = the store's), for the editable cell.
+        "shift_start": member.shift_start,
+        "grace_minutes": member.shift_grace_minutes,
+        "exempt": rules["exempt"],
+        "days": len(days),
+        "shifts": len(rows),
+        "minutes": sum(minutes_of(day_rows, now) for day_rows in days.values()),
+        "late_days": sum(1 for minutes in late_per_day if minutes > 0),
+        "late_minutes": late,
+        "deduction": deduction_of(late, rules),
+    }
+
+
+def month_payload(db: Session, tenant: Tenant, month: str) -> dict:
+    """The month in one place: every person who clocked in, totalled."""
+    first, last = month_bounds(month)
+    now = datetime.now()
+    rows = (
+        db.query(AttendanceShift)
+        .filter(
+            AttendanceShift.tenant_id == tenant.id,
+            AttendanceShift.work_date >= first,
+            AttendanceShift.work_date <= last,
+        )
+        .all()
+    )
+    people = {
+        member.id: member
+        for member in db.query(Staff)
+        .filter(
+            Staff.tenant_id == tenant.id,
+            Staff.role.in_(SHIFT_ROLES),
+            Staff.is_active.is_(True),
+        )
+        .all()
+    }
+    # Somebody switched off mid-month still totals the days they worked.
+    for staff_id in {row.staff_id for row in rows} - set(people):
+        gone = (
+            db.query(Staff)
+            .filter(Staff.tenant_id == tenant.id, Staff.id == staff_id)
+            .first()
+        )
+        if gone is not None:
+            people[staff_id] = gone
+
+    by_staff: dict[int, list[AttendanceShift]] = {}
+    for row in rows:
+        by_staff.setdefault(row.staff_id, []).append(row)
+
+    members = [
+        month_member(member, by_staff.get(member.id, []), now, tenant)
+        for member in sorted(people.values(), key=lambda row: row.id)
+    ]
+    return {
+        "month": month,
+        "start": first.isoformat(),
+        "end": last.isoformat(),
+        "rules": rules_of(tenant),
+        "members": members,
+        "summary": {
+            "members": len(members),
+            "days": sum(row["days"] for row in members),
+            "minutes": sum(row["minutes"] for row in members),
+            "late_days": sum(row["late_days"] for row in members),
+            "late_minutes": sum(row["late_minutes"] for row in members),
+            "deduction": round(sum(row["deduction"] for row in members), 2),
+        },
+    }
+
+
+def require_supervisor(user: Staff = Depends(auth.current_user)) -> Staff:
+    """Who may set a person's shift time: the manager on shift and above.
+
+    Store-wide settings stay admin-only; which person starts when is shift
+    planning, which is exactly the manager's job.
+    """
+    if user.role not in SUPERVISOR_ROLES:
+        raise HTTPException(
+            status_code=403, detail="Only a manager can set a shift time."
+        )
+    return user
+
+
+class RuleIn(BaseModel):
+    """A person's own shift window; empty / null hands them back to the store."""
+
+    shift_start: str = Field(default="", pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$")
+    grace_minutes: int | None = Field(default=None, ge=0, le=180)
+    month: str | None = None
+
+
+@router.get("/month")
+def month_board(
+    month: str | None = Query(None),
+    user: Staff = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+):
+    tenant = current_tenant(db)
+    return month_payload(db, tenant, parse_month(month))
+
+
+@router.patch("/rules/{staff_id}")
+def set_member_rules(
+    staff_id: int,
+    payload: RuleIn,
+    user: Staff = Depends(require_supervisor),
+    db: Session = Depends(get_db),
+):
+    tenant = current_tenant(db)
+    member = (
+        db.query(Staff)
+        .filter(Staff.tenant_id == tenant.id, Staff.id == staff_id)
+        .first()
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    member.shift_start = payload.shift_start
+    member.shift_grace_minutes = payload.grace_minutes
+    grace = (
+        "store default"
+        if payload.grace_minutes is None
+        else f"{payload.grace_minutes} min"
+    )
+    audit.log(
+        db,
+        tenant.id,
+        "attendance.rule",
+        "staff",
+        member.id,
+        f"{member.name} — {payload.shift_start or 'store default'} / {grace}",
+        actor=user.name,
+    )
+    db.commit()
+    return month_payload(db, tenant, parse_month(payload.month))
 
 
 def punch_target(

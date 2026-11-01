@@ -82,13 +82,15 @@ export default function AttendanceBoard({
                   </span>
                   <span aria-hidden="true">·</span>
                   <span>
-                    {t('attendance.deduction', {
-                      amount: formatCurrency(
-                        lang,
-                        member.deduction,
-                        day.rules.currency,
-                      ),
-                    })}
+                    {member.exempt
+                      ? t('attendance.monthExempt')
+                      : t('attendance.deduction', {
+                          amount: formatCurrency(
+                            lang,
+                            member.deduction,
+                            day.rules.currency,
+                          ),
+                        })}
                   </span>
                 </p>
               ) : null}

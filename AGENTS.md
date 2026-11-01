@@ -743,12 +743,37 @@ service.
   `auth.require_admin` — a manager or cashier gets 403) in the *الحضور وخصم
   التأخير* card, and read back on `/attendance` by everyone.
 - Lateness is **derived per request, never stored**: `late_minutes` is the day's
-  first arrival past `shift_start + grace`, so a split shift is late once, and
-  `deduction = late_minutes × late_deduction_rate`. `GET /api/attendance` carries
-  `rules` plus `late_minutes`/`deduction` per member and
+  first arrival past the person's shift start + grace, so a split shift is late
+  once, and `deduction = late_minutes × late_deduction_rate`. `GET /api/attendance`
+  carries `rules` plus `late_minutes`/`deduction` per member and
   `late_count`/`late_minutes`/`deduction` in `summary`. Editing the rule reprices
   past days too — that is the point of deriving it, and the reason nothing needs
   a migration when the rate changes.
+- **A person may have their own window.** Two additive `staff` columns
+  (`db.py` **and** `models.py`): `shift_start` (`"HH:MM"`, empty = the store's) and
+  `shift_grace_minutes` (`NULL` = the store's). `member_rules()` in
+  `routes/attendance.py` resolves them, so every lateness figure — the day board
+  and the month totals alike — is measured against that person's own time.
+  `PATCH /api/attendance/rules/{staff_id}` sets both (`""` / `null` clears them
+  back to the store's rule, an impossible value is **422**) and answers the whole
+  month payload. `require_supervisor` guards it: **a manager may set a shift time**
+  (that is shift planning) while `PATCH /api/settings` stays admin-only.
+- **Supervisors are never fined.** `EXEMPT_ROLES` (`admin`, `manager`) clock in
+  like everyone else and their lateness is still counted, but `deduction_of()`
+  returns 0 for them; the payload carries `exempt` so the UI can say
+  `بدون خصم` instead of an amount. Owner has no board row at all.
+- `GET /api/attendance/month?month=YYYY-MM` (default: this month) is the monthly
+  table: per person `days`, `shifts`, `minutes`, `late_days`, `late_minutes`,
+  `deduction` plus their own `shift_start`/`grace_minutes`, and the same sums in
+  `summary`. A bad month is **422**. Minutes of a row still open are counted up
+  to now, exactly like the day board.
+- UI: the `/attendance` header has a **اليوم / الشهر** segmented control (same
+  markup as the checklist views). The month side is
+  `components/attendance/AttendanceMonthTable.tsx` — it fetches its own month,
+  keeps per-row drafts, shows a ✓ save button only while a row is dirty, and saves
+  the row back through the rules endpoint. Anyone may read it; `canEdit` is
+  `canSupervise(role)`. On a narrow screen the table scrolls sideways inside its
+  card (`min-w-[760px]`), never the page.
 - UI: `components/attendance/LateRuleBar.tsx` sits under the three-cell summary
   (rule, "خصم التأخير اليوم", late count; an admin with no rule yet gets the
   "اضبطه من الإعدادات" link), and each late row in `AttendanceBoard` prints
@@ -758,9 +783,12 @@ service.
   scratch member, sets the rule relative to that arrival (30 min before, 5 min
   grace, 2/min → 25 late minutes and 50 off), asserts the board repriced and the
   grace window zeroes it, then patches the store's previous rule back.
-- Tests: `apps/api/tests/test_attendance.py` (6 checks) create a scratch cashier
-  with a sign-in and remove their shifts, sessions, audit rows (by id watermark)
-  and the person again. Baseline after a run: the seeded shifts, nothing else.
+- Tests: `apps/api/tests/test_attendance.py` (11 checks) create a scratch cashier
+  (and a scratch manager) and remove their shifts, sessions, audit rows (by id
+  watermark) and the person again. Baseline after a run: the seeded shifts,
+  nothing else. The two rule tests move `PATCH /api/settings` to a time relative
+  to their own arrival and patch the saved rule back in a `finally`; the
+  personal-window test clears both columns again in the same way.
 
 ## Installable app (PWA)
 
