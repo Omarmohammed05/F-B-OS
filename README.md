@@ -6,8 +6,10 @@ language/dark-mode switching and the store setup flow, plus working **menu
 management**, the **recipe builder**, the **POS and orders board**, the
 **customer book**, **reports** computed from real orders, the **team roster**,
 a **live dashboard**, a **settings** surface that edits the store itself,
-**loyalty stamp cards** with points, tiers and Google Wallet passes, and a
-**stock ledger** that deducts ingredients when a ticket is served.
+**loyalty stamp cards** with points, tiers and Google Wallet passes, a
+**stock ledger** that deducts ingredients when a ticket is served, daily
+**checklists** and an **attendance clock**. It installs on a phone or a counter
+tablet as a PWA.
 
 ## What works
 
@@ -38,6 +40,13 @@ a **live dashboard**, a **settings** surface that edits the store itself,
   and an active toggle; the store always keeps one active owner and one active
   admin. Only an admin can add people, give them a username and password, or change
   a role — an admin may create any role, including another admin.
+- **Attendance** (`/attendance`) — clock in when the shift starts and out when it
+  ends. The day board shows who is on the floor, their arrival and departure, and
+  the hours worked; a manager can punch a teammate in or out from the counter
+  tablet. Looking at an earlier day shows that day's board.
+- **Installable app** — the web app ships a manifest and a service worker, so it
+  can be added to a phone or tablet's home screen and opens full screen. Losing
+  the connection shows the app's own offline page instead of the browser's.
 - **Settings** (`/settings`) — the store's own record: name in both languages,
   accent color, currency, tax rate and how many tables the POS offers. Every
   change is written straight to the records the rest of the app reads.
@@ -54,7 +63,8 @@ API: `/api/menu`, `/api/menu/categories`, `/api/menu/products`,
 `/api/menu/products/{id}/recipe`, `/api/ingredients`, `/api/pos`, `/api/orders`,
 `/api/customers`, `/api/loyalty`, `/api/ingredients/{id}/movements`,
 `/api/reports`, `/api/reports/export.csv`, `/api/team`, `/api/settings`,
-`/api/audit` (interactive docs at http://localhost:8000/docs).
+`/api/checklists`, `/api/attendance`, `/api/audit` (interactive docs at
+http://localhost:8000/docs).
 
 Every route except `/api/health` needs a session; `POST /api/auth/login`,
 `POST /api/auth/logout`, `GET /api/auth/me` and `POST /api/auth/onboarding` are

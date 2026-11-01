@@ -52,6 +52,17 @@ export function formatClock(lang: Lang, iso: string | null) {
   }).format(new Date(iso));
 }
 
+/** Minutes worked as "7h 35m" (Arabic letters, Latin digits like every figure). */
+export function formatDuration(lang: Lang, minutes: number) {
+  const total = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(total / 60);
+  const rest = total % 60;
+  const h = formatNumber(lang, hours);
+  const m = formatNumber(lang, rest);
+  if (!hours) return lang === 'ar' ? `${m} د` : `${m}m`;
+  return lang === 'ar' ? `${h} س ${m} د` : `${h}h ${m}m`;
+}
+
 export function formatPercent(lang: Lang, value: number) {
   const sign = value > 0 ? '+' : '';
   return `${sign}${formatNumber(lang, value, 1)}%`;

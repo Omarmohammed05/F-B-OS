@@ -523,6 +523,35 @@ export type ChecklistTaskInput = {
   is_active?: boolean;
 };
 
+/** 'in' = a shift is still open, 'out' = clocked out, 'none' = no arrival. */
+export type AttendanceStatus = 'in' | 'out' | 'none';
+
+export type AttendanceMember = {
+  id: number;
+  name: string;
+  role: StaffRole;
+  is_active: boolean;
+  status: AttendanceStatus;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+  open_since: string | null;
+  minutes: number;
+  shifts: number;
+};
+
+export type AttendanceDay = {
+  date: string;
+  is_today: boolean;
+  me: AttendanceMember | null;
+  members: AttendanceMember[];
+  summary: {
+    on_shift: number;
+    checked_in: number;
+    minutes: number;
+    members: number;
+  };
+};
+
 export type AuthUser = {
   id: number;
   name: string;
@@ -806,6 +835,19 @@ export const api = {
   deleteChecklistTask: (id: number) =>
     request<{ tasks: ChecklistTask[] }>(`/api/checklists/tasks/${id}`, {
       method: 'DELETE',
+    }),
+
+  attendance: (date?: string) =>
+    request<AttendanceDay>(`/api/attendance${date ? `?date=${date}` : ''}`),
+  checkIn: (body: { staff_id?: number; date?: string } = {}) =>
+    request<AttendanceDay>('/api/attendance/check-in', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  checkOut: (body: { staff_id?: number; date?: string } = {}) =>
+    request<AttendanceDay>('/api/attendance/check-out', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 
   settings: () => request<SettingsData>('/api/settings'),

@@ -12,6 +12,7 @@ from .dashboard import build_dashboard
 from .db import Base, engine, ensure_columns, get_db
 from .deps import current_tenant
 from .models import SetupTask, Tenant
+from .routes import attendance as attendance_routes
 from .routes import audit as audit_routes
 from .routes import auth as auth_routes
 from .routes import branches as branch_routes
@@ -82,6 +83,7 @@ app.include_router(audit_routes.router)
 app.include_router(notification_routes.router)
 app.include_router(branch_routes.router)
 app.include_router(checklist_routes.router)
+app.include_router(attendance_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

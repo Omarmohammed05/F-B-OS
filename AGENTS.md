@@ -37,6 +37,8 @@ curl -s localhost:3000/api/team | head -c 200             # staff roster
 curl -s localhost:3000/api/branches | head -c 200         # locations + active one
 curl -s localhost:3000/api/settings | head -c 200         # store profile + tables
 curl -s localhost:3000/api/loyalty | head -c 200          # program + member cards
+curl -s localhost:3000/api/checklists | head -c 200       # today's checklist board
+curl -s localhost:3000/api/attendance | head -c 200       # who is on the floor today
 curl -s localhost:3000/api/ingredients | head -c 300      # stock balances + ledger
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
@@ -695,3 +697,65 @@ service.
   (`keep_data=false`), which deletes the rows it created. Tests:
   `apps/api/tests/test_restaurants.py` create their own staff, sessions, audit rows
   and tenant and remove them again.
+
+## Attendance (who is on the floor)
+
+- One new table, so plain `create_all` covers it — there is no `ADDITIVE_COLUMNS`
+  entry: `attendance_shifts` (one row per arrival). A check-in opens a row, a
+  check-out fills `checked_out_at`, and the day's minutes are the sum of the rows
+  plus the one still open. There is **no unique constraint**: a split shift is a
+  second row, and the idempotency that a counter tablet needs lives in the
+  endpoint (a check-in finds the open row and returns without writing).
+- `work_date` is the calendar day the shift belongs to (server date), so a board
+  reads one day without replaying timestamps. A row left open on a past day shows
+  as `noCheckout` (`status: "in"` with `is_today: false`), which is the honest
+  signal that somebody forgot to punch out — nothing auto-closes it.
+- Who may do what: anyone signed in punches **their own** clock; `SUPERVISOR_ROLES`
+  (manager, admin, owner) may punch a teammate in or out (the shared tablet), and
+  a non-supervisor asking for somebody else gets **403**. The platform `owner` is
+  not on the board at all (`SHIFT_ROLES`), so `me` is `null` for that account and
+  the page says so instead of offering a button. A switched-off member is 409.
+- Endpoints: `GET /api/attendance?date=YYYY-MM-DD` (the day board: `me`, `members`
+  with status / first arrival / last departure / minutes / `shifts`, and a
+  `summary`), `POST /api/attendance/check-in` and `POST /api/attendance/check-out`
+  (`{staff_id?, date?}`, both answer the whole day payload). A second check-out
+  with nothing open is **409**; a bad date is **422**. Punches write
+  `attendance.in` / `attendance.out` audit rows next to the change.
+- UI route: `/attendance` (`pages/AttendancePage.tsx`, Operations nav) — a date
+  navigator, the viewer's own `AttendancePunch` card (one 56px target, its live
+  duration ticks every 30s from `open_since` — never re-derived from `minutes`,
+  which already counts the open row), a three-cell summary, then
+  `components/attendance/AttendanceBoard.tsx`. The hero is only rendered for
+  today; another day shows its board and the "punches are only taken for today"
+  note. Board row actions appear only for a supervisor, and never on their own row.
+- The seed adds today's demo shifts (`Hassan` and `Dina` still on the floor,
+  `Youssef` already left) only when the store has no attendance rows at all, so a
+  restart never duplicates a punch.
+- Tests: `apps/api/tests/test_attendance.py` (6 checks) create a scratch cashier
+  with a sign-in and remove their shifts, sessions, audit rows (by id watermark)
+  and the person again. Baseline after a run: the seeded shifts, nothing else.
+
+## Installable app (PWA)
+
+- `apps/web/public/manifest.webmanifest` + `icons/` (espresso tile with the gold
+  khatim seal — `icon-192`, `icon-512`, `icon-maskable-512` keeps the seal inside
+  the safe zone, `apple-touch-icon` 180) + `public/sw.js`, registered from
+  `src/main.tsx` on `load`. `index.html` carries the manifest link, `theme-color`
+  `#17130f` (the same espresso), the Apple standalone tags and the description.
+- The icons are committed PNGs produced once by a throwaway pure-Node script
+  (stdlib `zlib`, a tiny PNG writer — there is no Pillow or canvas in the images).
+  Regenerate them the same way rather than adding a build dependency.
+- `sw.js` is deliberately small: it precaches the offline page, the manifest and
+  the icons; a **navigation** goes to the network and falls back to
+  `public/offline.html`; production `/assets/*` (fingerprinted) are cached
+  cache-first; `/api/*` is **never** cached, because a ticket, a guest or a punch
+  must be the server's answer. The Vite dev server serves nothing under
+  `/assets/`, so dev/HMR is untouched by that rule.
+- A cross-origin iframe (the Base44 preview pane) may refuse service-worker
+  registration; `main.tsx` swallows that rejection on purpose. The app then works
+  exactly as a plain web app and the banner/install prompt belongs to the app's
+  own origin. Verify the wiring from the page itself:
+  `fetch('/manifest.webmanifest')`, `fetch('/sw.js')`, an `Image` load of
+  `/icons/icon-512.png` (512×512) and the `link[rel=manifest]` / `meta[theme-color]`
+  tags — that is what an install prompt reads. There is no build step and no new
+  dependency.

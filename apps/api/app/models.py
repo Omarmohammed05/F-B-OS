@@ -410,3 +410,27 @@ class ChecklistCheck(Base):
     # Who ticked it: the member themselves, or the manager on shift.
     done_by: Mapped[int] = mapped_column(Integer, default=0)
     done_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class AttendanceShift(Base):
+    """One arrival and the departure that closes it.
+
+    A row is opened by a check-in and closed by a check-out, so a day's hours are
+    the sum of its rows and a split shift needs no special case: check out, and
+    the next arrival opens a second row. `checked_out_at` stays empty while the
+    person is on the floor.
+    """
+
+    __tablename__ = "attendance_shifts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff.id"), index=True)
+    # The calendar day the shift belongs to, so a past day reads as one board.
+    work_date: Mapped[date] = mapped_column(Date, index=True)
+    checked_in_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    checked_out_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Who tapped: the member themselves, or the manager at the counter tablet.
+    opened_by: Mapped[int] = mapped_column(Integer, default=0)
+    closed_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -8,6 +8,7 @@ from .auth import hash_password
 from .db import Base, SessionLocal, engine, ensure_columns
 from .models import (
     ActivityRow,
+    AttendanceShift,
     Branch,
     ChecklistTask,
     Customer,
@@ -544,6 +545,39 @@ def seed() -> None:
                         title_en=title_en,
                         role=role,
                         sort=sort,
+                    )
+                )
+
+        # Today's demo attendance, matched by name so a restart never adds a
+        # second shift: two people on the floor this morning and one who has
+        # already left, which is what the page's day board is showing off.
+        if db.query(AttendanceShift).filter_by(tenant_id=tenant.id).count() == 0:
+            roster = {
+                row.name: row
+                for row in db.query(Staff).filter_by(tenant_id=tenant.id).all()
+            }
+            now = datetime.now()
+            morning = now.replace(hour=8, minute=5, second=0, microsecond=0)
+            if morning >= now:
+                morning = now - timedelta(hours=3)
+            demo_shifts = [
+                ("Hassan Mahmoud", morning, None),
+                ("Dina Farouk", morning + timedelta(minutes=25), None),
+                ("Youssef Adel", morning + timedelta(minutes=10), now - timedelta(hours=1)),
+            ]
+            for name, arrived, left in demo_shifts:
+                member = roster.get(name)
+                if member is None:
+                    continue
+                db.add(
+                    AttendanceShift(
+                        tenant_id=tenant.id,
+                        staff_id=member.id,
+                        work_date=date.today(),
+                        checked_in_at=arrived,
+                        checked_out_at=left,
+                        opened_by=member.id,
+                        closed_by=member.id if left else 0,
                     )
                 )
 

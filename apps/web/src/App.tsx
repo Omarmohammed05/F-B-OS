@@ -4,6 +4,7 @@ import RequireAuth from './components/RequireAuth';
 import { AuthProvider } from './lib/auth';
 import { AppDataProvider } from './lib/store';
 import OwnerOnly from './components/OwnerOnly';
+import AttendancePage from './pages/AttendancePage';
 import ChecklistPage from './pages/ChecklistPage';
 import CustomersPage from './pages/CustomersPage';
 import Dashboard from './pages/Dashboard';
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="reports" element={<ReportsPage />} />
             <Route path="team" element={<TeamPage />} />
             <Route path="checklists" element={<ChecklistPage />} />
+            <Route path="attendance" element={<AttendancePage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFound />} />
           </Route>

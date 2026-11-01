@@ -106,7 +106,7 @@ until staff sign-in gives each session its own identity.
 | Redemption is one transaction, one reward | Done (`POST /cards/{id}/redeem` 409 unless full) |
 | Points/stamps reverse on refund/void | **Outstanding** — there is no refund or payment capture yet; a cancelled ticket awards nothing, which is the closest existing guarantee |
 | Discount / void / price edit behind a manager PIN | **Outstanding** — needs roles and a PIN |
-| Audit trail for money, stock and access actions | **Done.** `audit_logs` (append-only) records `order.served`, `order.cancelled`, `stock.purchase|waste`, `ingredient.edit`, `product.price`, `staff.access`, `staff.delete`, `settings.update`, `branch.create`, `branch.activate`, `loyalty.stamp|redeem|remove|program`; read it at `GET /api/audit` |
+| Audit trail for money, stock and access actions | **Done.** `audit_logs` (append-only) records `order.served`, `order.cancelled`, `stock.purchase|waste`, `ingredient.edit`, `product.price`, `staff.access`, `staff.delete`, `settings.update`, `branch.create`, `branch.activate`, `loyalty.stamp|redeem|remove|program`, `attendance.in|out`; read it at `GET /api/audit` |
 | Alerts to the owner (voids, variance, failures) | **Outstanding** — needs notifications and roles |
 | Staff sign-in, PIN hashing, lockout, session lifetime | **Done for passwords; PINs are not used.** PBKDF2-SHA256 (240k iterations), per-store unique usernames, one 401 message for a wrong name or password, `auth_sessions` stores only a SHA-256 fingerprint of the cookie token, 7-day sessions, sessions deleted with the member, sign-in limited to 10/minute. Account lockout after repeated failures is not implemented — the rate limit is the only brake. |
 | Security headers | **Partial.** `X-Content-Type-Options`, `Referrer-Policy`, `Cache-Control: no-store`, `X-Frame-Options` on every API reply. **CSP is not set here**: the SPA is served by the Vite dev server, so a strict policy must be added at the reverse proxy/CDN in front of a production build |
@@ -116,7 +116,7 @@ until staff sign-in gives each session its own identity.
 
 ## Tests (`apps/api/tests/`)
 
-20 checks, all passing, all cleaning up after themselves:
+44 checks, all passing, all cleaning up after themselves:
 
 - security headers, rate limit (429 + `Retry-After`)
 - money recomputed from the menu, not the client
@@ -126,10 +126,12 @@ until staff sign-in gives each session its own identity.
 - serving deducts stock exactly once, second serve is 409, audit row written
 - append-only ledger and trail have no write routes
 - guest handle is 32 hex characters and the pass barcode uses it
+- an attendance punch is idempotent, a second clock-out is 409, and a member
+  cannot clock a teammate (403)
 
 Not covered, and honest about it: role-based walkthroughs (§4.3), the k6 load test
 and reconciliation (§4), OWASP ZAP, and anything under §3.11–3.13 that needs
-sign-in, shifts or payments — none of which exist in this build.
+payments — no card or wallet payment is taken in this build.
 
 ## Release gate
 
