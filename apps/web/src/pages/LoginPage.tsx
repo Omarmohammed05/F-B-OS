@@ -2,7 +2,18 @@ import { Lock, User } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { useLang } from '../lib/i18n';
+import { useLang, type TranslationKey } from '../lib/i18n';
+
+// Test sign-ins seeded for every role (apps/api/app/seed.py). Tapping one fills
+// the form so each role can be tried without looking the names up.
+const DEMO_PASSWORD = 'sufra1234';
+const DEMO_ACCOUNTS: { role: TranslationKey; username: string }[] = [
+  { role: 'team.role.owner', username: 'admin' },
+  { role: 'team.role.admin', username: 'storeadmin' },
+  { role: 'team.role.manager', username: 'manager' },
+  { role: 'team.role.cashier', username: 'cashier' },
+  { role: 'team.role.kitchen', username: 'kitchen' },
+];
 
 export default function LoginPage() {
   const { t, lang, setLang } = useLang();
@@ -132,9 +143,30 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="mt-4 rounded-field border border-line bg-surface px-4 py-3 text-center text-[12px] text-ink-2">
-          {t('login.demo')}
-        </p>
+        <div className="mt-4 rounded-field border border-line bg-surface px-4 py-3">
+          <p className="text-center text-[12px] text-ink-2">
+            {t('login.demoAccounts')}
+          </p>
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
+            {DEMO_ACCOUNTS.map((account) => (
+              <button
+                key={account.username}
+                type="button"
+                onClick={() => {
+                  setUsername(account.username);
+                  setPassword(DEMO_PASSWORD);
+                  setError(null);
+                }}
+                className="btn-quiet h-9 min-h-0 gap-1.5 px-3 text-[12px]"
+              >
+                <span>{t(account.role)}</span>
+                <span dir="ltr" className="text-ink-2">
+                  {account.username}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       </main>
     </div>
   );

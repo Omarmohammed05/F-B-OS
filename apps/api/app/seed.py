@@ -2,6 +2,8 @@
 
 from datetime import date, datetime, timedelta
 
+from sqlalchemy import func
+
 from .auth import hash_password
 from .db import Base, SessionLocal, engine, ensure_columns
 from .models import (
@@ -186,6 +188,18 @@ STAFF = [
 # platform owner: it opens restaurants, bills them and hands out their admins.
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "sufra1234"
+
+# One sign-in per role so every screen can be tried without hand-adding accounts
+# on the Team page. Each one attaches to a seeded roster row above by name; the
+# platform owner is ADMIN_USERNAME. They share the demo password, and the block
+# only fills a member whose username is still empty, so a renamed or
+# re-passworded account is never overwritten on restart.
+DEMO_LOGINS = [
+    ("Hassan Mahmoud", "storeadmin", "admin"),
+    ("Dina Farouk", "manager", "manager"),
+    ("Youssef Adel", "cashier", "cashier"),
+    ("Karim Nabil", "kitchen", "kitchen"),
+]
 
 DEMO_ORDERS = [
     ("dine_in", 7, "", "preparing", "cash", 24, [("Latte", 2), ("Cheesecake", 1)]),
@@ -476,6 +490,33 @@ def seed() -> None:
                     password_hash=hash_password(ADMIN_PASSWORD),
                 )
             )
+
+        # One test sign-in per restaurant role (see DEMO_LOGINS), filled in on an
+        # existing roster row so the Team page keeps a single person per name.
+        for name, username, role in DEMO_LOGINS:
+            taken = (
+                db.query(Staff)
+                .filter(Staff.username != "", func.lower(Staff.username) == username)
+                .first()
+            )
+            if taken is not None:
+                continue
+            member = (
+                db.query(Staff)
+                .filter(
+                    Staff.tenant_id == tenant.id,
+                    Staff.name == name,
+                    Staff.username == "",
+                )
+                .first()
+            )
+            if member is None:
+                member = Staff(tenant_id=tenant.id, name=name, phone="", role=role)
+                db.add(member)
+            member.role = role
+            member.is_active = True
+            member.username = username
+            member.password_hash = hash_password(ADMIN_PASSWORD)
 
         if db.query(Order).filter_by(tenant_id=tenant.id).count() == 0:
             catalog = {

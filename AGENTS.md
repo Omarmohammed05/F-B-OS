@@ -532,9 +532,9 @@ service.
   account (**409**). Only the owner reaches `/api/restaurants` and `/api/income`.
 - `staff.username` / `staff.password_hash` / `staff.onboarded_at` are additive
   columns in `db.py`, plus `ux_staff_username` (unique per store where the username
-  is not empty). A roster entry with an empty username has no sign-in — that is how
-  the five seeded people stay name-only, and `has_login` is what the UI reads.
-  A username is 3–60 `[a-z0-9._-]`; a password needs 8 characters.
+  is not empty). A roster entry with an empty username has no sign-in — that is why
+  the switched-off Mariam Saleh stays name-only, and `has_login` is what the UI
+  reads. A username is 3–60 `[a-z0-9._-]`; a password needs 8 characters.
 - The tour is **server state, not a browser flag**: `onboarded_at` is `NULL` until
   `POST /api/auth/onboarding`. `user_payload.needs_onboarding` drives
   `components/RequireAuth.tsx`, which redirects a first sign-in to `/onboarding`
@@ -546,10 +546,26 @@ service.
   and `AppDataProvider` now sits inside `RequireAuth`, so no dashboard request is
   made before there is a session. `/team` hides the create/edit controls unless the
   viewer is an admin (`team.adminOnly` explains why).
-- The seeded demo account is **`admin` / `sufra1234`** (`seed.ADMIN_USERNAME` /
-  `ADMIN_PASSWORD`), created on every boot for whichever store has none. It is a
-  development default: replace the password from the Team page (`PATCH /api/team/{id}`
-  accepts `password` for a member that already has a username) before real use.
+- One demo sign-in per role ships with the seed, all with the password
+  **`sufra1234`**:
+
+  | Role | Username | What it opens |
+  | --- | --- | --- |
+  | Platform owner | `admin` | `/restaurants`, `/income`, plus every restaurant's admin surfaces |
+  | Restaurant admin | `storeadmin` | `/team`, `/settings`, branches, the whole store |
+  | Manager | `manager` | operations only; team/settings edits answer 403 |
+  | Cashier | `cashier` | operations only |
+  | Kitchen | `kitchen` | operations only |
+
+  `admin` comes from `seed.ADMIN_USERNAME` / `ADMIN_PASSWORD` and is created on
+  every boot for whichever store has none. The other four come from
+  `seed.DEMO_LOGINS`: the seed fills the username and password into the matching
+  roster row **only while that username is free and the row has none**, so a
+  renamed or re-passworded account survives a restart. `pages/LoginPage.tsx` lists
+  them as tap-to-fill buttons (`DEMO_ACCOUNTS`, `login.demoAccounts`). They are
+  development defaults: replace the passwords from the Team page
+  (`PATCH /api/team/{id}` accepts `password` for a member that already has a
+  username) before real use.
 - Verifying by hand: signed out, `/` and `/team` bounce to `/login`; a wrong
   password shows one message; `admin` lands on `/onboarding`, then on the dashboard;
   `/team` → **إضافة عضو** with a username and password creates a real account that

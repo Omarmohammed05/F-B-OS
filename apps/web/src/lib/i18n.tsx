@@ -43,7 +43,8 @@ const en = {
   'login.inactive': 'This account is switched off. Ask your admin.',
   'login.throttled': 'Too many attempts. Wait a minute and try again.',
   'login.empty': 'Enter your username and password.',
-  'login.demo': 'Demo store — username admin, password sufra1234.',
+  'login.demoAccounts':
+    'Test accounts — tap one to fill it in. Password: sufra1234',
   'tour.welcome': 'Welcome, {name}. Here is the whole app in seven stops.',
   'tour.counter': '{current} of {total}',
   'tour.back': 'Back',
@@ -600,7 +601,8 @@ const ar: Record<TranslationKey, string> = {
   'login.inactive': 'هذا الحساب موقوف. تواصل مع المسؤول.',
   'login.throttled': 'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.',
   'login.empty': 'أدخل اسم المستخدم وكلمة المرور.',
-  'login.demo': 'متجر تجريبي — اسم المستخدم admin وكلمة المرور sufra1234.',
+  'login.demoAccounts':
+    'حسابات تجريبية — اضغط على أي منها لتعبئتها. كلمة المرور: sufra1234',
   'tour.welcome': 'أهلًا {name}. هذه الجولة تعرّفك على النظام في سبع خطوات.',
   'tour.counter': '{current} من {total}',
   'tour.back': 'السابق',
