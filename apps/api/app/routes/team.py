@@ -28,6 +28,8 @@ ROLES = ("admin", "owner", "manager", "cashier", "kitchen")
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9._-]{3,60}$")
 MIN_PASSWORD = 8
+# The PIN a manager leaves on a shared till (see `auth.PIN_ROLES`).
+PIN_PATTERN = re.compile(r"^\d{4,8}$")
 
 
 def serialize_restaurant(tenant: Tenant) -> dict:
@@ -47,6 +49,8 @@ def serialize_staff(row: Staff, branches: dict[int, Branch] | None = None) -> di
         "role": row.role,
         "username": row.username,
         "has_login": bool(row.username and row.password_hash),
+        # Whether this person can approve a void; the sheet says "set a PIN".
+        "has_pin": bool(row.pin_hash),
         "onboarded": row.onboarded_at is not None,
         "is_active": row.is_active,
         "restaurant_id": row.tenant_id,
@@ -169,6 +173,8 @@ class StaffIn(BaseModel):
     # Both empty for a roster-only name; both set to hand out a sign-in.
     username: str = Field(default="", max_length=60)
     password: str = Field(default="", max_length=200)
+    # Optional: the PIN this manager approves a void with.
+    pin: str = Field(default="", max_length=8)
     # Which restaurant the account belongs to. Ignored for a non-admin, who can
     # only add to their own store.
     restaurant_id: int | None = None
@@ -184,6 +190,8 @@ class StaffPatch(BaseModel):
     is_active: bool | None = None
     # Setting a password on a member who already has a username resets it.
     password: str | None = Field(default=None, max_length=200)
+    # Setting a PIN, or clearing it with an empty string.
+    pin: str | None = Field(default=None, max_length=8)
     # Moving somebody to another location.
     branch_id: int | None = None
 
@@ -234,6 +242,19 @@ def create_staff(
     branch_id = values.pop("branch_id")
     username = values.pop("username").strip()
     password = values.pop("password")
+    pin = values.pop("pin", "")
+
+    if pin:
+        # A PIN is the manager's signature on a shared till, so it belongs to a
+        # role that can be called over: manager and above.
+        if values["role"] not in auth.PIN_ROLES:
+            raise HTTPException(
+                status_code=422,
+                detail="Only a manager, an admin or the owner holds a PIN.",
+            )
+        if not PIN_PATTERN.match(pin):
+            raise HTTPException(status_code=422, detail="A PIN is 4–8 digits.")
+        values["pin_hash"] = auth.hash_password(pin)
 
     # The platform role sits above every restaurant, so only the owner hands it
     # out — and an owner without a sign-in would be locked out of their own app.
@@ -302,6 +323,18 @@ def update_staff(
     tenant = db.get(Tenant, row.tenant_id)
     changes = patch.model_dump(exclude_unset=True)
     password = changes.pop("password", None)
+    pin = changes.pop("pin", None)
+
+    if pin is not None:
+        if pin and changes.get("role", row.role) not in auth.PIN_ROLES:
+            raise HTTPException(
+                status_code=422,
+                detail="Only a manager, an admin or the owner holds a PIN.",
+            )
+        if pin and not PIN_PATTERN.match(pin):
+            raise HTTPException(status_code=422, detail="A PIN is 4–8 digits.")
+        # An empty value takes the PIN away again.
+        row.pin_hash = auth.hash_password(pin) if pin else ""
 
     if password is not None:
         if not row.username:
@@ -361,15 +394,22 @@ def update_staff(
             changes.get("branch_id") or row.branch_id or active_branch_id(db, tenant)
         )
 
+    # A member who no longer stands above the till keeps no approval of their own.
+    if changes.get("role", row.role) not in auth.PIN_ROLES:
+        row.pin_hash = ""
+
     for field, value in changes.items():
         setattr(row, field, value)
 
     access_change = {"role", "is_active"} & changes.keys()
-    if access_change or password is not None:
+    if access_change or password is not None or pin is not None:
         # Who can open the till is the access question a review asks first.
         detail = ", ".join(f"{field}={changes[field]}" for field in sorted(access_change))
         if password is not None:
             detail = f"{detail}, password=reset" if detail else "password=reset"
+        if pin is not None:
+            pin_detail = "pin=set" if pin else "pin=cleared"
+            detail = f"{detail}, {pin_detail}" if detail else pin_detail
         audit.log(
             db,
             tenant.id,

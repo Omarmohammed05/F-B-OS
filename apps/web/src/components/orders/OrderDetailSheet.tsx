@@ -1,5 +1,4 @@
 import { CheckCheck, ChefHat, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import type { Order } from '../../lib/api';
 import { formatClock, formatCurrency } from '../../lib/format';
 import { useLang } from '../../lib/i18n';
@@ -25,24 +24,10 @@ export default function OrderDetailSheet({
   onCancel,
 }: Props) {
   const { t, lang } = useLang();
-  const [confirming, setConfirming] = useState(false);
-
-  useEffect(() => {
-    setConfirming(false);
-  }, [order?.id]);
 
   if (!order) return null;
 
   const open = order.status === 'new' || order.status === 'preparing';
-
-  const handleCancel = () => {
-    if (!confirming) {
-      setConfirming(true);
-      return;
-    }
-    setConfirming(false);
-    onCancel();
-  };
 
   return (
     <Sheet
@@ -68,20 +53,12 @@ export default function OrderDetailSheet({
             </button>
             <button
               type="button"
-              onClick={handleCancel}
+              onClick={onCancel}
               disabled={busy}
               className="btn-quiet h-11 min-h-0 gap-1.5 px-4 text-[14px] disabled:opacity-50"
-              style={
-                confirming
-                  ? {
-                      color: 'var(--danger)',
-                      borderColor: 'var(--danger)',
-                    }
-                  : undefined
-              }
             >
               <X size={16} />
-              {confirming ? t('orders.confirmCancel') : t('orders.cancel')}
+              {t('orders.cancel')}
             </button>
           </>
         ) : (
@@ -209,6 +186,20 @@ export default function OrderDetailSheet({
           <span className="font-semibold text-ink-2">{t('orders.note')}: </span>
           {order.note}
         </p>
+      ) : null}
+
+      {order.voided_by ? (
+        <div className="mt-3 rounded-field border border-line px-3 py-2 text-[13px]">
+          <p className="font-semibold" style={{ color: 'var(--danger)' }}>
+            {t('orders.voided')}
+          </p>
+          <p className="mt-0.5 text-ink-2">
+            {t('orders.voidedBy', { name: order.voided_by })}
+          </p>
+          {order.void_reason ? (
+            <p className="mt-0.5 text-ink-2">{order.void_reason}</p>
+          ) : null}
+        </div>
       ) : null}
     </Sheet>
   );

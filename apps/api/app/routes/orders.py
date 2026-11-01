@@ -7,11 +7,11 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, auth
 from ..db import get_db
 from ..deps import active_branch_id, current_tenant
 from ..loyalty import award_stamp
-from ..models import Customer, Order, OrderItem, Product, Tenant
+from ..models import Customer, Order, OrderItem, Product, Staff, Tenant
 from ..security import client_host, ensure_token
 from ..stock import deduct_for_order
 
@@ -60,6 +60,9 @@ def serialize_order(order: Order, items: list[OrderItem]) -> dict:
         "tax": order.tax,
         "total": order.total,
         "note": order.note,
+        # Empty on a live ticket; a void keeps who approved it and why.
+        "void_reason": order.void_reason,
+        "voided_by": order.voided_by,
         "placed_at": order.placed_at.isoformat() if order.placed_at else None,
         "item_count": sum(item.qty for item in items),
         "items": [
@@ -150,6 +153,8 @@ class OrderIn(BaseModel):
 
 class OrderPatch(BaseModel):
     status: OrderStatus
+    # Only read on a void, where the reason is kept with the approver's name.
+    reason: str = Field(default="", max_length=200)
 
 
 # ----------------------------------------------------------------- endpoints
@@ -329,6 +334,7 @@ def update_order(
     order_id: int,
     patch: OrderPatch,
     request: Request,
+    user: Staff = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
@@ -340,17 +346,39 @@ def update_order(
             detail=f"An order that is {order.status} cannot move to {patch.status}.",
         )
 
+    # A void takes money off the day's sales, so it is signed. The token comes
+    # from `POST /api/auth/pin` — a manager's PIN, checked against the roster —
+    # and is spent here, so one approval voids exactly one ticket. The till's own
+    # session is whoever is standing at it, which is why the role is not enough.
+    approver = None
+    if patch.status == "cancelled":
+        approver = auth.take_grant(
+            db, tenant.id, request.headers.get("x-approval", "")
+        )
+        if approver is None:
+            raise HTTPException(
+                status_code=403,
+                detail="A manager's PIN is needed to void a ticket.",
+            )
+        order.void_reason = patch.reason.strip()
+        order.voided_by = approver.name
+
     previous = order.status
     order.status = patch.status
     # A void or a serve is exactly what a fraud review asks about later.
+    detail = f"#{order.number} {previous} → {patch.status}, total {order.total:.2f}"
+    if approver is not None:
+        detail += f", approved by {approver.name}"
+        if order.void_reason:
+            detail += f" ({order.void_reason})"
     audit.log(
         db,
         tenant.id,
         f"order.{patch.status}",
         "order",
         order.id,
-        f"#{order.number} {previous} → {patch.status}, total {order.total:.2f}",
-        actor=client_host(request),
+        detail,
+        actor=user.name or client_host(request),
     )
     if order.status == "served":
         # A served ticket is the visit a loyalty card counts, and the sale that

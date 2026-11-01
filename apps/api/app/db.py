@@ -59,6 +59,10 @@ ADDITIVE_COLUMNS = [
     ("branches", "menu_token", "VARCHAR(32) NOT NULL DEFAULT ''"),
     # The read-only demo visitor (see auth.SessionGate).
     ("staff", "is_demo", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # A manager's PIN, and the reason/approver a voided ticket keeps.
+    ("staff", "pin_hash", "VARCHAR(200) NOT NULL DEFAULT ''"),
+    ("orders", "void_reason", "VARCHAR(200) NOT NULL DEFAULT ''"),
+    ("orders", "voided_by", "VARCHAR(120) NOT NULL DEFAULT ''"),
 ]
 
 ADDITIVE_INDEXES = [

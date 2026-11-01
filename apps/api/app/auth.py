@@ -21,7 +21,7 @@ from starlette.responses import JSONResponse
 
 from .db import SessionLocal, get_db
 from .deps import COST_ROLES, set_request_role, set_request_tenant
-from .models import AuthSession, Staff, Tenant
+from .models import AuthSession, PinGrant, Staff, Tenant
 
 COOKIE_NAME = "sufra_session"
 SESSION_DAYS = 7
@@ -129,6 +129,60 @@ def close_session(db: Session, token: str) -> None:
         AuthSession.token_hash == _fingerprint(token)
     ).delete()
     db.commit()
+
+
+# -------------------------------------------------------------------- the PIN
+
+
+# Who may hold a PIN: the person a cashier calls over. A PIN is the signature a
+# manager leaves on a shared till, never a way to sign in.
+PIN_ROLES = ("owner", "admin", "manager")
+# A slip is worth one ticket, and only for the next five minutes.
+PIN_TTL_MINUTES = 5
+
+
+def open_grant(db: Session, staff: Staff) -> str:
+    """Mint the one-time token a checked PIN earns, and return it."""
+    token = secrets.token_urlsafe(24)
+    db.add(
+        PinGrant(
+            tenant_id=staff.tenant_id,
+            staff_id=staff.id,
+            token_hash=_fingerprint(token),
+            expires_at=datetime.now() + timedelta(minutes=PIN_TTL_MINUTES),
+        )
+    )
+    db.commit()
+    return token
+
+
+def take_grant(db: Session, tenant_id: int, token: str) -> Staff | None:
+    """The manager behind an approval token, once — then the slip is spent.
+
+    Returns None for a missing, expired, foreign-store or non-manager slip, so a
+    caller either gets a named manager or nothing at all.
+    """
+    if not token:
+        return None
+    row = (
+        db.query(PinGrant)
+        .filter(
+            PinGrant.tenant_id == tenant_id,
+            PinGrant.token_hash == _fingerprint(token),
+        )
+        .first()
+    )
+    if row is None:
+        return None
+    # Deleting without a commit: the approving action commits, and drops the slip
+    # with it in the same transaction.
+    db.delete(row)
+    if row.expires_at is not None and row.expires_at < datetime.now():
+        return None
+    staff = db.get(Staff, row.staff_id)
+    if staff is None or not staff.is_active or staff.role not in PIN_ROLES:
+        return None
+    return staff
 
 
 def user_payload(staff: Staff) -> dict:

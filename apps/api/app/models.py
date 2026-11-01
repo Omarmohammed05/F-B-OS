@@ -228,6 +228,10 @@ class Staff(Base):
     # Empty for a roster entry that has no sign-in (the seed still has those).
     username: Mapped[str] = mapped_column(String(60), default="", index=True)
     password_hash: Mapped[str] = mapped_column(String(200), default="")
+    # A manager's PIN: what approves, on a shared till, the moves a cashier may
+    # not make (voiding a ticket). Same PBKDF2 format as the password; empty when
+    # nobody has set one.
+    pin_hash: Mapped[str] = mapped_column(String(200), default="")
     # Set when the first sign-in tour is finished or skipped.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -292,6 +296,24 @@ class AuthSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class PinGrant(Base):
+    """A manager's PIN, already checked: one action's permission slip.
+
+    `POST /api/auth/pin` mints one and the approving request presents it. It is
+    single use and dies in five minutes, so one approval voids one ticket and a
+    slip read over a shoulder is worthless tomorrow.
+    """
+
+    __tablename__ = "pin_grants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class Order(Base):
     """A POS order. Column names (status/channel/payment) are the contract."""
 
@@ -316,6 +338,10 @@ class Order(Base):
     note: Mapped[str] = mapped_column(String(240), default="")
     # Empty unless the caller sent an Idempotency-Key; unique per store when set.
     idempotency_key: Mapped[str] = mapped_column(String(64), default="", index=True)
+    # A void keeps its reason and the manager whose PIN approved it, because a
+    # cancelled ticket is exactly what a fraud review asks about later.
+    void_reason: Mapped[str] = mapped_column(String(200), default="")
+    voided_by: Mapped[str] = mapped_column(String(120), default="")
     placed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

@@ -450,7 +450,8 @@ service.
   average-margin card, the ingredient unit-cost column, the report's food-cost
   card and cost/margin rows, and the product/ingredient/cost controls; the recipe
   page shows `menu.costHidden` instead of the plate cost and its save button.
-- Still outstanding: a manager PIN, blind close, and the lateness deduction on
+- **A void needs a manager's PIN** (see *The manager PIN* below). Still
+  outstanding: blind close, discounts, and the lateness deduction on
   `/api/attendance` (a shared-tablet surface, so one person's salary figure is
   visible to the next — see SECURITY.md).
 - `apps/api/app/security.py` holds two things: the `Hardening` middleware (rate
@@ -494,6 +495,41 @@ service.
   the Vite dev server, so a strict policy belongs in front of a production build
   (reverse proxy or CDN), not in `vite.config.ts` where it would fight HMR.
 
+
+## The manager PIN (signing a void)
+
+- Three additive columns (`db.py` **and** `models.py`): `staff.pin_hash`,
+  `orders.void_reason` and `orders.voided_by`. `pin_grants` is a new table, so
+  plain `create_all` covers it.
+- A PIN is **not a sign-in**: it belongs to `auth.PIN_ROLES` (owner, admin,
+  manager), it is hashed with the same PBKDF2 as a password, and it opens nothing
+  by itself. `POST /api/auth/pin` `{pin}` checks it against the roster of the
+  caller's own store and answers
+  `{token, name, role, expires_in}` — a one-time approval that dies in five
+  minutes (`auth.open_grant` / `auth.take_grant`). No PIN set anywhere answers
+  **409**, a wrong PIN **401**, and the endpoint is budgeted at 10/minute per
+  caller in `security.RULES`.
+- `PATCH /api/orders/{id}` with `status: "cancelled"` is the one action behind
+  it: without a valid `X-Approval` header it answers **403**, whatever the
+  caller's role — on a shared till the session is whoever is standing there. The
+  token is spent by the void that uses it, and the ticket keeps
+  `voided_by` (the manager's name) and `void_reason`.
+- The PIN is set on `/team`: `StaffDialog` shows a numeric field for manager and
+  above, `POST/PATCH /api/team` accept `pin` (4–8 digits; anything else **422**),
+  an empty string clears it, and demoting someone below manager drops their PIN.
+  `has_pin` in the roster payload renders the "PIN set" chip.
+- UI: `components/orders/VoidSheet.tsx` is the till's signature sheet (reason +
+  PIN, danger-coloured confirm), opened from the order card's cancel button and
+  from `OrderDetailSheet`; the older two-tap "confirm cancel" is gone because the
+  sheet is the confirmation. A voided ticket's detail shows *ملغي بموافقة* with
+  the approver and the reason.
+- Tests: `apps/api/tests/test_void.py` (2 checks) makes its own manager with a
+  PIN and its own tickets, proves the 403 → PIN → void path, proves the token is
+  single use, and removes everything again. Baseline after a run: no `pin_grants`
+  rows, no staff with a PIN.
+- To exercise it by hand: set a PIN on a manager from `/team`, void a ticket from
+  `/orders`, then clear that PIN (`PATCH /api/team/{id}` `{"pin": ""}`) so the
+  roster goes back to how the seed left it.
 
 ## Checklists (per person, per day)
 

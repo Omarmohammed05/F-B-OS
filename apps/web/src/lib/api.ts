@@ -258,6 +258,9 @@ export type Order = {
   tax: number;
   total: number;
   note: string;
+  /** Who approved a void, and why; both empty on a live ticket. */
+  voided_by: string;
+  void_reason: string;
   placed_at: string | null;
   item_count: number;
   items: OrderItem[];
@@ -540,6 +543,8 @@ export type StaffMember = {
   role: StaffRole;
   username: string;
   has_login: boolean;
+  /** Whether this person can approve a void with a PIN. */
+  has_pin: boolean;
   onboarded: boolean;
   is_active: boolean;
   restaurant_id: number;
@@ -569,6 +574,8 @@ export type StaffInput = {
   is_active?: boolean;
   username?: string;
   password?: string;
+  /** A manager's approval PIN; empty leaves an existing one alone. */
+  pin?: string;
   /** The restaurant the account belongs to; admins only. */
   restaurant_id?: number;
   /** The location the person works in; empty means the active branch. */
@@ -576,6 +583,14 @@ export type StaffInput = {
 };
 
 export type RestaurantInput = { name_ar: string; name_en: string };
+
+/** What a checked manager PIN earns: one action, in the next five minutes. */
+export type PinApproval = {
+  token: string;
+  name: string;
+  role: StaffRole;
+  expires_in: number;
+};
 
 /** A role a checklist item can be scoped to; '' is everybody's list. */
 export type ChecklistRole = '' | Exclude<StaffRole, 'owner'>;
@@ -844,6 +859,12 @@ export const api = {
   startDemo: () => request<AuthUser>('/api/auth/demo', { method: 'POST' }),
   finishOnboarding: () =>
     request<AuthUser>('/api/auth/onboarding', { method: 'POST' }),
+  /** A manager's PIN, checked on the till; answers a one-time approval token. */
+  verifyPin: (pin: string) =>
+    request<PinApproval>('/api/auth/pin', {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
+    }),
 
   dashboard: () => request<DashboardData>('/api/dashboard'),
   notifications: () => request<NotificationsData>('/api/notifications'),
@@ -930,10 +951,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  updateOrder: (id: number, status: OrderStatus) =>
+  updateOrder: (
+    id: number,
+    status: OrderStatus,
+    /** A void carries the manager's approval token and its reason. */
+    options?: { approval?: string; reason?: string },
+  ) =>
     request<Order>(`/api/orders/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.approval ? { 'X-Approval': options.approval } : {}),
+      },
+      body: JSON.stringify({ status, reason: options?.reason ?? '' }),
     }),
 
   customers: () => request<CustomersData>('/api/customers'),

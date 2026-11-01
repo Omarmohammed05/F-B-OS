@@ -2,6 +2,7 @@ import { RefreshCw, Search } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import OrderCard from '../components/orders/OrderCard';
 import OrderDetailSheet from '../components/orders/OrderDetailSheet';
+import VoidSheet from '../components/orders/VoidSheet';
 import { api, type Order, type OrderStatus } from '../lib/api';
 import { formatCurrency, formatNumber } from '../lib/format';
 import { useLang, type TranslationKey } from '../lib/i18n';
@@ -35,6 +36,8 @@ export default function OrdersPage() {
   const [actionError, setActionError] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // A void is not a status change like the others: it opens the manager's PIN.
+  const [voidTarget, setVoidTarget] = useState<Order | null>(null);
   const [nonce, setNonce] = useState(0);
   const [query, setQuery] = useState('');
   const [missed, setMissed] = useState(false);
@@ -82,6 +85,13 @@ export default function OrdersPage() {
       })
       .catch(() => setActionError(true))
       .finally(() => setBusyId(null));
+  };
+
+  /** Cancelling asks a manager to sign for it, instead of sending the patch. */
+  const askVoid = (order: Order) => {
+    setActionError(false);
+    setSelectedId(null);
+    setVoidTarget(order);
   };
 
   /** A typed ticket number jumps straight to that ticket's sheet. */
@@ -247,7 +257,7 @@ export default function OrdersPage() {
                     }
                     onCancel={
                       order.status === 'new' || order.status === 'preparing'
-                        ? () => changeStatus(order, 'cancelled')
+                        ? () => askVoid(order)
                         : undefined
                     }
                   />
@@ -290,8 +300,18 @@ export default function OrdersPage() {
         }}
         onCancel={() => {
           if (!selected) return;
-          changeStatus(selected, 'cancelled');
+          askVoid(selected);
         }}
+      />
+
+      <VoidSheet
+        order={voidTarget}
+        onClose={() => setVoidTarget(null)}
+        onVoided={(updated) =>
+          setOrders((current) =>
+            current.map((row) => (row.id === updated.id ? updated : row)),
+          )
+        }
       />
     </div>
   );

@@ -1,5 +1,4 @@
 import { CheckCheck, ChefHat, X } from 'lucide-react';
-import { useState } from 'react';
 import type { Order } from '../../lib/api';
 import { formatClock, formatCurrency } from '../../lib/format';
 import { useLang } from '../../lib/i18n';
@@ -23,7 +22,6 @@ export default function OrderCard({
   onCancel,
 }: Props) {
   const { t, lang } = useLang();
-  const [confirming, setConfirming] = useState(false);
 
   const summary = order.items
     .map(
@@ -31,15 +29,6 @@ export default function OrderCard({
         `${item.qty}× ${lang === 'ar' ? item.name_ar : item.name_en}`,
     )
     .join(' · ');
-
-  const handleCancel = () => {
-    if (!confirming) {
-      setConfirming(true);
-      return;
-    }
-    setConfirming(false);
-    onCancel?.();
-  };
 
   return (
     <article className="card flex flex-col gap-3 p-3.5">
@@ -117,20 +106,12 @@ export default function OrderCard({
           {onCancel ? (
             <button
               type="button"
-              onClick={handleCancel}
+              onClick={onCancel}
               disabled={busy}
               className="btn-quiet h-9 min-h-0 gap-1.5 px-3 text-[13px] disabled:opacity-50"
-              style={
-                confirming
-                  ? {
-                      color: 'var(--danger)',
-                      borderColor: 'var(--danger)',
-                    }
-                  : undefined
-              }
             >
               <X size={15} />
-              {confirming ? t('orders.confirmCancel') : t('orders.cancel')}
+              {t('orders.cancel')}
             </button>
           ) : null}
         </div>

@@ -36,6 +36,12 @@ by a manager or above — `deps.sees_cost`, `auth.guard_cost` / `require_cost`) 
 **access** (team, settings, branches and the platform surface, see the gate
 table). Everything else still only needs *a* session.
 
+**A void crosses roles on purpose.** Cancelling a ticket is the one operational
+action a session alone cannot do: `PATCH /api/orders/{id}` with `status: cancelled`
+answers **403** without an `X-Approval` token minted by a manager's PIN
+(`POST /api/auth/pin`), whoever is signed in — see *Void behind a manager PIN*
+under P2.
+
 **The demo session is read-only.** `/api/auth/demo` signs a visitor into the
 sample store as a member flagged `staff.is_demo`, and `auth.SessionGate` refuses
 every non-GET it sends (only `/api/auth/logout` passes) before a handler runs.
@@ -71,11 +77,13 @@ caller.
 | Flow | Budget | Status |
 |---|---|---|
 | Password guessing (`POST /api/auth/login`) | 10 / minute per caller | Done — 429 + `Retry-After` |
+| Manager PIN guessing (`POST /api/auth/pin`) | 10 / minute per caller | Done — 429 + `Retry-After` |
 | Wallet save link (`GET /api/loyalty/cards/{id}/wallet-link`) | 5 / hour **per card** | Done — 429 + `Retry-After` |
 | CSV export (`GET /api/reports/export.csv`) | 5 / hour per caller | Done, tested |
 | Order creation (`POST /api/orders`) | 120 / minute per caller | Done |
 | Any mutation (`POST/PATCH/PUT/DELETE`) | 300 / minute per caller | Done |
-| Manager PIN verify, public QR order, phone lookup, WhatsApp sends, uploads | — | **Not applicable**: none of those endpoints exist |
+| Public QR read / guest order / ticket lookup | 120, 20 and 60 / minute per caller | Done (`security.RULES`) |
+| Phone lookup, WhatsApp sends, uploads | — | **Not applicable**: none of those endpoints exist |
 
 Counters live in the API process, so a multi-worker or multi-host deployment needs
 a shared store (Redis) — one line to swap in `Hardening._reject`. Behind the Vite
@@ -115,10 +123,11 @@ until staff sign-in gives each session its own identity.
 |---|---|
 | Redemption is one transaction, one reward | Done (`POST /cards/{id}/redeem` 409 unless full) |
 | Points/stamps reverse on refund/void | **Outstanding** — there is no refund or payment capture yet; a cancelled ticket awards nothing, which is the closest existing guarantee |
-| Discount / void / price edit behind a manager PIN | **Outstanding** — needs roles and a PIN |
+| Void behind a manager PIN | **Done.** `POST /api/auth/pin` checks a manager's PIN (`staff.pin_hash`, same PBKDF2 as a password) and answers a single-use token that dies in five minutes (`pin_grants`). `PATCH /api/orders/{id}` with `status: cancelled` answers **403** without a valid `X-Approval`, whatever the caller's role — on a shared till the session is whoever is standing there — and the ticket keeps `voided_by` and `void_reason`. One token voids one ticket. `tests/test_void.py` proves the refusal, the void, the approver on the ticket and the spent token. |
+| Discount / price edit behind a manager PIN | **Outstanding for discounts** — no discount exists yet. A price or unit cost already needs a manager and above (`auth.require_cost` / `guard_cost`). |
 | Audit trail for money, stock and access actions | **Done.** `audit_logs` (append-only) records `order.served`, `order.cancelled`, `stock.purchase|waste`, `ingredient.edit`, `product.price`, `staff.access`, `staff.delete`, `settings.update`, `branch.create`, `branch.activate`, `loyalty.stamp|redeem|remove|program`, `attendance.in|out`, `attendance.rule`; read it at `GET /api/audit` |
 | Alerts to the owner (voids, variance, failures) | **Outstanding** — needs notifications and roles |
-| Staff sign-in, PIN hashing, lockout, session lifetime | **Done for passwords; PINs are not used.** PBKDF2-SHA256 (240k iterations), per-store unique usernames, one 401 message for a wrong name or password, `auth_sessions` stores only a SHA-256 fingerprint of the cookie token, 7-day sessions, sessions deleted with the member, sign-in limited to 10/minute. Account lockout after repeated failures is not implemented — the rate limit is the only brake. |
+| Staff sign-in, PIN hashing, lockout, session lifetime | **Done for passwords and PINs.** PBKDF2-SHA256 (240k iterations) is used for both; a PIN is only ever checked, never a credential that opens a session. Per-store unique usernames, one 401 message for a wrong name or password, `auth_sessions` stores only a SHA-256 fingerprint of the cookie token, 7-day sessions, sessions deleted with the member, sign-in and PIN entry limited to 10/minute each. Account lockout after repeated failures is not implemented — the rate limit is the only brake. |
 | Security headers | **Partial.** `X-Content-Type-Options`, `Referrer-Policy`, `Cache-Control: no-store`, `X-Frame-Options` on every API reply. **CSP is not set here**: the SPA is served by the Vite dev server, so a strict policy must be added at the reverse proxy/CDN in front of a production build |
 | Personal data (guest phone numbers) | Collected for receipts and the guest book; deleting the customer clears it and keeps the order snapshot. **Before scaling**, confirm Egypt's PDPL obligations and add a documented deletion request path |
 | Backups / restore rehearsal | **Outstanding** — no scheduled export exists yet |
@@ -126,7 +135,7 @@ until staff sign-in gives each session its own identity.
 
 ## Tests (`apps/api/tests/`)
 
-52 checks, all passing, all cleaning up after themselves:
+70 checks, all passing, all cleaning up after themselves:
 
 - security headers, rate limit (429 + `Retry-After`)
 - money recomputed from the menu, not the client
@@ -142,6 +151,9 @@ until staff sign-in gives each session its own identity.
   time wins over the store's, and only a supervisor sets one (403)
 - a cashier's menu, inventory and report payloads carry no cost or margin, a
   price move answers 403, and the manager's payload still has both
+- a void answers 403 without a manager's PIN, the checked PIN voids it under the
+  approver's name with its reason, the same token cannot void a second ticket,
+  and a PIN belongs to a manager and above (422 for a cashier)
 
 Not covered, and honest about it: role-based walkthroughs (§4.3), the k6 load test
 and reconciliation (§4), OWASP ZAP, and anything under §3.11–3.13 that needs
@@ -157,14 +169,16 @@ the person next to them needs the PIN/unlock work below.
 | Tenant isolation tests: 0 failures | ✅ |
 | Mass-assignment and function-level tests | ✅ mass assignment; function-level for accounts, the platform surface, money fields and price/cost writes; ⚠️ other operational endpoints are session-only by design |
 | Order tamper, idempotency and concurrency tests | ✅ (concurrency covered by the unique index, not by a load test) |
-| Blind close | N/A — no shifts yet |
-| Rate limits verified (PIN, public order, loyalty, export) | ⚠️ loyalty + export ✅, tested; PIN/public order do not exist |
+| Blind close | ❌ outstanding — no cash session or shift yet |
+| Rate limits verified (PIN, public order, loyalty, export) | ✅ loyalty, export, public QR and the manager PIN all tested (429 + `Retry-After`) |
 | Webhook signature tests | N/A |
 | No secrets in frontend, entities or logs | ✅ |
 | Security scan clean | ⚠️ no scanner available in the sandbox; headers and dependencies reviewed by hand |
 | Backup export tested, restore rehearsed | ❌ outstanding |
 | Owner alerts | ❌ outstanding (needs roles + notifications) |
 
-**Verdict: harden-what-exists is done, and roles now gate money fields and account
-management; going live still needs a manager PIN, blind close and the P2 items
-that depend on them.**
+**Verdict: harden-what-exists is done; roles gate money fields and account
+management, and a void is signed by a manager's PIN. Going live still needs blind
+close (a cash session to close) and the P2 items that depend on the till's
+day-to-day routine — backups, owner alerts and the lateness visibility on the
+shared attendance board.**

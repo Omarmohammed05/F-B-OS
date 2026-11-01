@@ -127,6 +127,48 @@ def me(user: Staff = Depends(auth.current_user)):
     return auth.user_payload(user)
 
 
+class PinIn(BaseModel):
+    pin: str = Field(min_length=4, max_length=8, pattern=r"^\d{4,8}$")
+
+
+@router.post("/pin")
+def approve_with_pin(
+    payload: PinIn,
+    user: Staff = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+):
+    """Check a manager's PIN and answer a one-time approval token.
+
+    This is the shared till's second signature: the cashier stays signed in as
+    themselves and the void the token approves carries the manager's name. The
+    PIN opens nothing by itself — it is not a sign-in.
+    """
+    holders = (
+        db.query(Staff)
+        .filter(
+            Staff.tenant_id == user.tenant_id,
+            Staff.is_active.is_(True),
+            Staff.pin_hash != "",
+            Staff.role.in_(auth.PIN_ROLES),
+        )
+        .all()
+    )
+    if not holders:
+        raise HTTPException(
+            status_code=409,
+            detail="No manager has set a PIN yet — set one on the team roster.",
+        )
+    for row in holders:
+        if auth.check_password(payload.pin, row.pin_hash):
+            return {
+                "token": auth.open_grant(db, row),
+                "name": row.name,
+                "role": row.role,
+                "expires_in": auth.PIN_TTL_MINUTES * 60,
+            }
+    raise HTTPException(status_code=401, detail="That PIN is not recognised.")
+
+
 @router.post("/onboarding")
 def finish_onboarding(
     user: Staff = Depends(auth.current_user), db: Session = Depends(get_db)

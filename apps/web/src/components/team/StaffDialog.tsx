@@ -42,6 +42,7 @@ export default function StaffDialog({
   const [active, setActive] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -57,6 +58,7 @@ export default function StaffDialog({
     setActive(member?.is_active ?? true);
     setUsername(member?.username ?? '');
     setPassword('');
+    setPin('');
     setSaving(false);
     setError(null);
     setConfirmDelete(false);
@@ -81,6 +83,10 @@ export default function StaffDialog({
       setError(t('team.passwordShort'));
       return;
     }
+    if (pin && !/^\d{4,8}$/.test(pin)) {
+      setError(t('team.pinInvalid'));
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -100,6 +106,8 @@ export default function StaffDialog({
     } else if (password) {
       payload.password = password;
     }
+    // Empty leaves an existing PIN alone; there is a separate way to clear it.
+    if (pin) payload.pin = pin;
 
     try {
       const data = member
@@ -255,6 +263,34 @@ export default function StaffDialog({
                 </option>
               ))}
             </select>
+          </label>
+        ) : null}
+
+        {role === 'manager' || role === 'admin' || role === 'owner' ? (
+          <label className="block">
+            <span className="mb-1 flex items-center gap-2 text-[13px] font-medium text-ink-2">
+              {t('team.pin')}
+              {member?.has_pin ? (
+                <span className="chip bg-surface-2 text-[11px] text-ink-2">
+                  {t('team.hasPin')}
+                </span>
+              ) : null}
+            </span>
+            <input
+              className="field tabular-nums tracking-[0.25em]"
+              dir="ltr"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={8}
+              value={pin}
+              onChange={(event) =>
+                setPin(event.target.value.replace(/\D/g, '').slice(0, 8))
+              }
+              placeholder={member?.has_pin ? t('team.pinKeep') : t('team.pinSet')}
+            />
+            <span className="mt-1 block text-[12px] text-ink-2">
+              {t('team.pinHint')}
+            </span>
           </label>
         ) : null}
 
