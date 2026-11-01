@@ -117,6 +117,9 @@ Two projects from this one repository — the SPA and the API — sharing one
 Postgres database. The web project proxies `/api/*` to the API project, so the
 browser stays on a single origin and the session cookie keeps working.
 
+The full from-scratch runbook — both projects, every environment variable, the
+owner account and troubleshooting — is in [`DEPLOY.md`](DEPLOY.md).
+
 1. **Database.** Create a Postgres database (Neon, Supabase, RDS) and copy its
    pooled connection string in SQLAlchemy form:
    `postgresql+psycopg2://USER:PASSWORD@HOST/DB?sslmode=require`.
@@ -151,8 +154,9 @@ browser stays on a single origin and the session cookie keeps working.
 4. **Web project.** Second Vercel project, **Root Directory `apps/web`** — Vite is
    detected and `apps/web/vercel.json` sets the build output and rewrites. It needs
    no environment variables. Point the `/api/:path*` rewrite at the API project's
-   domain: it ships as `https://sufra-api.vercel.app`, so replace that host with
-   yours (Vercel does not interpolate variables inside `vercel.json`).
+   domain: it ships as the placeholder `https://YOUR-API-PROJECT.vercel.app`, so
+   replace that host with yours (Vercel does not interpolate variables inside
+   `vercel.json`).
 
 5. Deploy both (`vercel --prod`, or push and let the Git integration build). The
    API function re-runs `create_all`/`ensure_columns` on a cold start, which is

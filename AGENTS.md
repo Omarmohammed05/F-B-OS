@@ -85,8 +85,11 @@ service.
   `apps/api` as the project root (`api/index.py` is the Python function and its
   `vercel.json` sends every route there) and `apps/web` as a static `dist` build
   whose `vercel.json` proxies `/api/*` to the API domain, so it stays one origin
-  and the session cookie works. README → *Deploy to Vercel* has the env vars
-  (`DATABASE_URL`, the two optional Wallet ones) and the one-time owner seed.
+  and the session cookie works. `DEPLOY.md` is the from-scratch runbook (both
+  projects, every env var, the one-time owner seed and troubleshooting); README →
+  *Deploy to Vercel* is the short version. The web project's `/api/*` rewrite host
+  ships as the placeholder `https://YOUR-API-PROJECT.vercel.app` and must be
+  replaced before deploying.
 - Accent color is tenant data (`tenants.accent_color`, default `#0A84FF`), applied
   to `--accent` at runtime after `/api/dashboard` loads. Language and theme live in
   `localStorage` (`fbos.lang`, `fbos.theme`); Arabic RTL is the default.
