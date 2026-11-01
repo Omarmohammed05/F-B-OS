@@ -128,6 +128,14 @@ export default function OrderDetailSheet({
             </dd>
           </div>
         ) : null}
+        {order.delivery_address ? (
+          <div className="col-span-2">
+            <dt className="text-ink-2">{t('orders.address')}</dt>
+            <dd className="mt-0.5 font-semibold text-ink">
+              {order.delivery_address}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt className="text-ink-2">{t('orders.payment')}</dt>
           <dd

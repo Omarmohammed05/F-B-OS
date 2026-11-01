@@ -122,8 +122,9 @@ service.
   `preparing → served | cancelled`. `served` and `cancelled` are final; anything
   else returns **409**.
 - Endpoints: `GET /api/orders` (newest first, 200 cap),
-  `POST /api/orders` (`{channel, table_no?, customer_name?, payment_method?,
-  note?, items: [{product_id, qty}]}`, 201 with the created order),
+  `POST /api/orders` (`{channel, table_no?, customer_id?, customer_name?,
+  delivery_address?, payment_method?, note?, items: [{product_id, qty}]}`, 201
+  with the created order),
   `PATCH /api/orders/{id}` (`{status}`), `GET /api/pos` (active categories +
   available products, `tax_rate`, `table_count`). POST rejects dine-in without a
   table (400), unknown products (400) and unavailable products (409).
@@ -158,9 +159,17 @@ service.
   before the `db.py` edit lands logs one `column ... does not exist` 500 in the
   `db` logs until the next reload applies the `ALTER`. That window is a reload
   artefact, not a schema bug — check `\d orders` and the endpoint before chasing it.
-- The POS never sends a customer id: `POST /api/orders` resolves a named guest by
-  case-insensitive name and creates the profile when it is new, so every ticket
-  with a name feeds the guest book. `customer_id` can still be passed explicitly.
+- The POS customer control reads the guest book (`GET /api/customers`, loaded
+  beside the catalog on `/pos`): the counter picks a saved guest, or
+  `pos.newCustomer` reveals a name field for a walk-in, which `POST /api/orders`
+  resolves case-insensitively and creates when it is new — so every ticket with a
+  name still feeds the book. `customer_id` wins over `customer_name` when both
+  arrive.
+- `orders.delivery_address` (additive, `db.py` + `models.py`) is set only when the
+  channel is `delivery`; every other ticket stores `''`. The POS shows the field
+  for delivery only and refuses to send without one (`pos.needAddress`), and
+  `OrderDetailSheet` prints it above the payment row. Nothing else reads it — the
+  board, reports and CSV are unchanged.
 - Guest stats (`visits`, `spend`, `last_visit`) are derived per request from
   non-cancelled orders — nothing is stored on `customers`. Seeded guests: Mona,
   Ahmed, Sara, Omar Khaled, Nour Ibrahim; the seed also links existing demo tickets

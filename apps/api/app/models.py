@@ -259,6 +259,8 @@ class Order(Base):
     channel: Mapped[str] = mapped_column(String(16), default="dine_in")
     table_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
     customer_name: Mapped[str] = mapped_column(String(120), default="")
+    # Where a delivery ticket goes; empty on every other channel.
+    delivery_address: Mapped[str] = mapped_column(String(200), default="")
     status: Mapped[str] = mapped_column(String(16), default="new")
     payment_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
     subtotal: Mapped[float] = mapped_column(Float, default=0)

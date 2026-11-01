@@ -53,6 +53,7 @@ def serialize_order(order: Order, items: list[OrderItem]) -> dict:
         "table_no": order.table_no,
         "customer_id": order.customer_id,
         "customer_name": order.customer_name,
+        "delivery_address": order.delivery_address,
         "status": order.status,
         "payment_method": order.payment_method,
         "subtotal": order.subtotal,
@@ -140,6 +141,8 @@ class OrderIn(BaseModel):
     table_no: int | None = Field(default=None, ge=1, le=999)
     customer_id: int = Field(default=0, ge=0)
     customer_name: str = Field(default="", max_length=120)
+    # Only kept on delivery tickets; every other channel stores an empty string.
+    delivery_address: str = Field(default="", max_length=200)
     payment_method: Payment | None = None
     note: str = Field(default="", max_length=240)
     items: list[OrderItemIn] = Field(min_length=1)
@@ -234,6 +237,9 @@ def create_order(
         channel=payload.channel,
         table_no=payload.table_no if payload.channel == "dine_in" else None,
         customer_name=customer.name if customer else "",
+        delivery_address=(
+            payload.delivery_address.strip() if payload.channel == "delivery" else ""
+        ),
         status="new",
         payment_method=payload.payment_method,
         note=payload.note.strip(),

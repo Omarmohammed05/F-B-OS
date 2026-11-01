@@ -40,6 +40,8 @@ ADDITIVE_COLUMNS = [
     ("tenants", "software_price", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
     ("tenants", "is_blocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
     ("tenants", "is_deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    # Delivery tickets carry the address the driver goes to.
+    ("orders", "delivery_address", "VARCHAR(200) NOT NULL DEFAULT ''"),
 ]
 
 ADDITIVE_INDEXES = [

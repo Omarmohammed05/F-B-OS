@@ -245,6 +245,7 @@ export type Order = {
   table_no: number | null;
   customer_id: number;
   customer_name: string;
+  delivery_address: string;
   status: OrderStatus;
   payment_method: PaymentMethod | null;
   subtotal: number;
@@ -263,6 +264,7 @@ export type OrderInput = {
   table_no?: number | null;
   customer_id?: number;
   customer_name?: string;
+  delivery_address?: string;
   payment_method: PaymentMethod | null;
   note?: string;
   items: { product_id: number; qty: number }[];

@@ -5,6 +5,7 @@ import PosCart, { type CartLine } from '../components/pos/PosCart';
 import PosProductGrid from '../components/pos/PosProductGrid';
 import {
   api,
+  type Customer,
   type MenuProduct,
   type Order,
   type OrderInput,
@@ -19,6 +20,8 @@ export default function PosPage() {
   const { t } = useLang();
 
   const [catalog, setCatalog] = useState<PosCatalog | null>(null);
+  // The guest book, so the counter can pick a saved client instead of retyping.
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -29,10 +32,11 @@ export default function PosPage() {
     let cancelled = false;
     setLoading(true);
     setError(false);
-    api
-      .pos()
-      .then((result) => {
-        if (!cancelled) setCatalog(result);
+    Promise.all([api.pos(), api.customers()])
+      .then(([result, book]) => {
+        if (cancelled) return;
+        setCatalog(result);
+        setCustomers(book.customers);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -166,6 +170,7 @@ export default function PosPage() {
           currency={currency}
           taxRate={catalog.tax_rate}
           tableCount={catalog.table_count}
+          customers={customers}
           onChangeQty={changeQty}
           onClear={() => setCart({})}
           onSubmit={submitOrder}

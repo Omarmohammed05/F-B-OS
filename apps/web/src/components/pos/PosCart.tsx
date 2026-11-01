@@ -1,6 +1,7 @@
 import { Minus, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type {
+  Customer,
   MenuProduct,
   OrderChannel,
   OrderInput,
@@ -16,6 +17,7 @@ type Props = {
   currency: string;
   taxRate: number;
   tableCount: number;
+  customers: Customer[];
   onChangeQty: (productId: number, delta: number) => void;
   onClear: () => void;
   onSubmit: (input: Omit<OrderInput, 'items'>) => Promise<unknown>;
@@ -66,6 +68,7 @@ export default function PosCart({
   currency,
   taxRate,
   tableCount,
+  customers,
   onChangeQty,
   onClear,
   onSubmit,
@@ -73,7 +76,10 @@ export default function PosCart({
   const { t, lang } = useLang();
   const [channel, setChannel] = useState<OrderChannel>('dine_in');
   const [tableNo, setTableNo] = useState('');
-  const [customer, setCustomer] = useState('');
+  // '' = no guest, 'new' = a name typed at the counter, otherwise a saved id.
+  const [customerId, setCustomerId] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [address, setAddress] = useState('');
   const [payment, setPayment] = useState<PaymentMethod | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,17 +101,26 @@ export default function PosCart({
       setError(t('pos.needTable'));
       return;
     }
+    if (channel === 'delivery' && !address.trim()) {
+      setError(t('pos.needAddress'));
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
+      const isNewGuest = customerId === 'new';
       await onSubmit({
         channel,
         table_no: channel === 'dine_in' ? Number(tableNo) : null,
-        customer_name: customer.trim(),
+        customer_id: isNewGuest ? 0 : Number(customerId) || 0,
+        customer_name: isNewGuest ? customerName.trim() : '',
+        delivery_address: channel === 'delivery' ? address.trim() : '',
         payment_method: payment,
       });
       setTableNo('');
-      setCustomer('');
+      setCustomerId('');
+      setCustomerName('');
+      setAddress('');
       setPayment(null);
     } catch {
       setError(t('pos.failed'));
@@ -223,20 +238,57 @@ export default function PosCart({
               )}
             </select>
           </label>
-        ) : (
+        ) : null}
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12px] font-semibold text-ink-2">
+            {t('pos.customer')}
+          </span>
+          <select
+            value={customerId}
+            onChange={(event) => setCustomerId(event.target.value)}
+            className="field"
+            aria-label={t('pos.customer')}
+          >
+            <option value="">{t('pos.noCustomer')}</option>
+            {customers.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.phone ? `${row.name} · ${row.phone}` : row.name}
+              </option>
+            ))}
+            <option value="new">{t('pos.newCustomer')}</option>
+          </select>
+        </label>
+
+        {customerId === 'new' ? (
           <label className="flex flex-col gap-1.5">
             <span className="text-[12px] font-semibold text-ink-2">
-              {t('pos.customer')}
+              {t('pos.customerName')}
             </span>
             <input
               type="text"
-              value={customer}
-              onChange={(event) => setCustomer(event.target.value)}
+              value={customerName}
+              onChange={(event) => setCustomerName(event.target.value)}
               placeholder={t('pos.customerPlaceholder')}
               className="field"
             />
           </label>
-        )}
+        ) : null}
+
+        {channel === 'delivery' ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-semibold text-ink-2">
+              {t('pos.address')}
+            </span>
+            <input
+              type="text"
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              placeholder={t('pos.addressPlaceholder')}
+              className="field"
+            />
+          </label>
+        ) : null}
 
         <div className="flex flex-col gap-1.5">
           <p className="text-[12px] font-semibold text-ink-2">
