@@ -290,6 +290,13 @@ service.
 - Secrets reach the `api` service through `env_file: /run/base44/app.env` (listed
   after `environment:`). Do not move them into `environment:` — that would
   permanently outrank the dashboard value.
+- `GOOGLE_WALLET_SERVICE_ACCOUNT` accepts the key JSON itself, the same JSON as one
+  base64 line (an env file cannot mangle a single line), or a value the env file
+  wrapped in quotes. The service account's **email address** — or any other value
+  that is not the key file — leaves the feature off. `wallet.problem()` says which
+  piece is missing and the API logs it once at startup (uvicorn.error), so a hidden
+  Wallet button always has a reason in `docker compose -f docker-compose.base44.yml
+  logs api`.
 - `programLogo` must be a public HTTPS image, because Google fetches it itself.
   `GOOGLE_WALLET_LOGO_URL` overrides it; otherwise the sandbox falls back to
   `https://3000-$BASE44_PUBLIC_HOST_SUFFIX/sufra-logo.png`, served from

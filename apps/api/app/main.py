@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -6,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from . import wallet
 from .dashboard import build_dashboard
 from .db import Base, engine, ensure_columns, get_db
 from .deps import current_tenant
@@ -27,6 +29,12 @@ async def lifespan(_app: FastAPI):
     # `migrate` service (seed) has had a chance to run.
     Base.metadata.create_all(bind=engine)
     ensure_columns()
+    # The loyalty page hides the Wallet button when this is off, so say why here
+    # instead of leaving a missing button unexplained.
+    if not wallet.enabled():
+        logging.getLogger("uvicorn.error").warning(
+            "Google Wallet passes are off: %s", wallet.problem()
+        )
     yield
 
 

@@ -13,6 +13,8 @@ In demo mode only accounts listed as test accounts (or admins/developers on the
 issuer) can save a pass — see the Wallet console, not this code.
 """
 
+import base64
+import binascii
 import json
 import os
 import time
@@ -38,14 +40,37 @@ class WalletError(Exception):
 
 
 def _service_account() -> dict | None:
+    """The key file, however it survived the trip through an env var.
+
+    Accepted as raw JSON, as one base64 line of the same JSON (an env file cannot
+    mangle a single line), or as JSON an env file wrapped in quotes.
+    """
     raw = os.environ.get("GOOGLE_WALLET_SERVICE_ACCOUNT", "").strip()
     if not raw:
         return None
+
+    candidates: list[str] = [raw]
     try:
-        info = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    if not info.get("client_email") or not info.get("private_key"):
+        candidates.append(base64.b64decode(raw, validate=True).decode())
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        pass
+
+    info = None
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except json.JSONDecodeError:
+                continue
+        if isinstance(parsed, dict):
+            info = parsed
+            break
+
+    if info is None or not info.get("client_email") or not info.get("private_key"):
         return None
     return info
 
@@ -72,6 +97,20 @@ def config() -> dict | None:
 
 def enabled() -> bool:
     return config() is not None
+
+
+def problem() -> str | None:
+    """One line naming what is missing, for the startup log. Never the value."""
+    if not os.environ.get("GOOGLE_WALLET_ISSUER_ID", "").strip():
+        return "GOOGLE_WALLET_ISSUER_ID is empty"
+    if _service_account() is None:
+        return (
+            "GOOGLE_WALLET_SERVICE_ACCOUNT is not the service account key JSON "
+            "(an email address or another value was supplied)"
+        )
+    if not _logo_url():
+        return "no public logo (set GOOGLE_WALLET_LOGO_URL or BASE44_PUBLIC_HOST_SUFFIX)"
+    return None
 
 
 def class_id(cfg: dict) -> str:
