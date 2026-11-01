@@ -330,7 +330,11 @@ def test_customer_gets_an_opaque_handle_and_passes_carry_it(client, db):
         )
         # The printed barcode must not be the guest's row id.
         assert payload["barcode"]["value"] == f"sufra-{row.qr_token}"
-        assert str(row.id) not in payload["barcode"]["value"]
+        assert payload["barcode"]["value"] != f"sufra-{row.id}"
+        # Nor any padded or hex spelling of it: the handle is pure randomness.
+        # Not a substring check — a short id like "21" occurs by chance inside a
+        # random 32-hex token about one run in nine.
+        assert row.qr_token not in {str(row.id), f"{row.id:032d}", f"{row.id:032x}"}
         assert payload["accountId"] == row.qr_token
         # A pass is a public object: no phone number, no email.
         assert "phone" not in str(payload).lower()
