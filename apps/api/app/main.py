@@ -16,6 +16,7 @@ from .routes import menu as menu_routes
 from .routes import orders as order_routes
 from .routes import pos as pos_routes
 from .routes import reports as report_routes
+from .routes import settings as setting_routes
 from .routes import team as team_routes
 
 @asynccontextmanager
@@ -51,6 +52,7 @@ app.include_router(order_routes.router)
 app.include_router(customer_routes.router)
 app.include_router(report_routes.router)
 app.include_router(team_routes.router)
+app.include_router(setting_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

@@ -1,9 +1,9 @@
 # AGENTS.md — F&B OS
 
-Phase 4: foundation, menu management, the recipe builder, the POS, the orders
-board, the customer book, real reports, the team roster and a live dashboard are
-working features. Loyalty and settings are still placeholder surfaces
-(`ModulePage`) — do not present them as working.
+Phase 5: foundation, menu management, the recipe builder, the POS, the orders
+board, the customer book, real reports, the team roster, a live dashboard and the
+store settings surface are working features. Loyalty is the only remaining
+placeholder surface (`ModulePage`) — do not present it as working.
 
 ## Run and verify
 
@@ -18,6 +18,7 @@ curl -s localhost:3000/api/orders | head -c 200           # live tickets
 curl -s localhost:3000/api/customers | head -c 200        # guest book + derived stats
 curl -s "localhost:3000/api/reports?days=7" | head -c 200 # sales / food cost
 curl -s localhost:3000/api/team | head -c 200             # staff roster
+curl -s localhost:3000/api/settings | head -c 200         # store profile + tables
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
 ```
@@ -192,3 +193,31 @@ service.
 - Verify against `/api/dashboard` rather than fixed numbers: compare the KPI
   cells and the activity table with the JSON, since the values follow the
   tickets in the database.
+
+## Phase 5: store settings
+
+- `GET /api/settings` and `PATCH /api/settings` edit the single `tenants` row plus
+  `daily_metrics.total_tables`. There is no settings table and no new schema —
+  the page writes to records every other module already reads.
+- Fields: `name_ar`, `name_en`, `accent_color` (`#rrggbb`), `currency` (3 upper-case
+  letters), `tax_rate` (0–100) and `table_count` (0–200). Invalid values are
+  rejected by Pydantic (**422**), so the page validates the same ranges first.
+- `table_count` cannot drop below the number of distinct tables held by **open**
+  dine-in tickets (`new`/`preparing`) — that returns **409**. The dashboard derives
+  `available_tables` from this count, so a smaller number would report a negative
+  floor. `service.open_tables` in the payload drives the hint under the field.
+- Every value the page writes is read live elsewhere: the name feeds the sidebar
+  and top bar (`/api/dashboard` tenant), the accent re-applies to `--accent` right
+  after a save, the currency reaches every `formatCurrency` call, the tax rate is
+  used by the **next** order (stored orders keep the tax they were charged) and
+  the table count feeds the POS picker and the dashboard available count.
+- UI route: `/settings` (`SettingsPage.tsx`) — profile, accent swatches, currency,
+  tax and tables in three cards with a sticky save bar (Save / Discard plus the
+  unsaved, saved and 409 states). `modules.ts`/`ModulePage` no longer list
+  settings; loyalty (`/loyalty`, phase 6) is the last placeholder.
+- The accent swatches are the six presets in `SettingsPage.tsx`. A tenant whose hex
+  is not in that list still renders (no swatch selected) and saves it back
+  unchanged; there is no free-form color input.
+- Verify by saving and reading back: change the table count and accent, save,
+  confirm `--accent` and the sidebar name, then walk the same form back to the
+  original values. Leave the tenant row exactly as the seed wrote it.

@@ -8,8 +8,7 @@ export type ModuleKey =
   | 'customers'
   | 'loyalty'
   | 'reports'
-  | 'team'
-  | 'settings';
+  | 'team';
 
 export type ModuleMeta = {
   key: ModuleKey;
@@ -75,13 +74,6 @@ export const MODULES: Record<ModuleKey, ModuleMeta> = {
     titleKey: 'module.team.title',
     blurbKey: 'module.team.blurb',
     scopeKey: 'module.team.scope',
-  },
-  settings: {
-    key: 'settings',
-    phase: 1,
-    titleKey: 'module.settings.title',
-    blurbKey: 'module.settings.blurb',
-    scopeKey: 'module.settings.scope',
   },
 };
 

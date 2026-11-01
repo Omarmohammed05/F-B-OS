@@ -1,12 +1,12 @@
 # F&B OS
 
 Smart F&B micro-ERP for Egyptian restaurants and cafés. This repository contains
-**Phases 0–4** — an Arabic-first (RTL), calm Apple-style application shell with
+**Phases 0–5** — an Arabic-first (RTL), calm Apple-style application shell with
 language/dark-mode switching and the store setup flow, plus working **menu
 management**, the **recipe builder**, the **POS and orders board**, the
-**customer book**, **reports** computed from real orders, the **team roster** and
-a **live dashboard**. Loyalty and settings remain navigation destinations with
-explicit "coming soon" surfaces.
+**customer book**, **reports** computed from real orders, the **team roster**,
+a **live dashboard** and a **settings** surface that edits the store itself.
+Loyalty remains a navigation destination with an explicit "coming soon" surface.
 
 ## What works
 
@@ -30,11 +30,14 @@ explicit "coming soon" surfaces.
   and a CSV export.
 - **Team** (`/team`) — staff with roles (owner, manager, cashier, kitchen) and an
   active toggle; the store always keeps one active owner.
+- **Settings** (`/settings`) — the store's own record: name in both languages,
+  accent color, currency, tax rate and how many tables the POS offers. Every
+  change is written straight to the records the rest of the app reads.
 
 API: `/api/menu`, `/api/menu/categories`, `/api/menu/products`,
 `/api/menu/products/{id}/recipe`, `/api/ingredients`, `/api/pos`, `/api/orders`,
-`/api/customers`, `/api/reports`, `/api/reports/export.csv`, `/api/team`
-(interactive docs at http://localhost:8000/docs).
+`/api/customers`, `/api/reports`, `/api/reports/export.csv`, `/api/team`,
+`/api/settings` (interactive docs at http://localhost:8000/docs).
 
 ## Stack
 

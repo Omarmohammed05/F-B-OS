@@ -299,6 +299,27 @@ export type StaffInput = {
   is_active?: boolean;
 };
 
+export type SettingsData = {
+  store: {
+    name_ar: string;
+    name_en: string;
+    accent_color: string;
+    currency: string;
+    tax_rate: number;
+    plan: string;
+  };
+  service: { table_count: number; open_tables: number };
+};
+
+export type SettingsInput = {
+  name_ar: string;
+  name_en: string;
+  accent_color: string;
+  currency: string;
+  tax_rate: number;
+  table_count: number;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -419,4 +440,11 @@ export const api = {
     }),
   deleteStaff: (id: number) =>
     request<TeamData>(`/api/team/${id}`, { method: 'DELETE' }),
+
+  settings: () => request<SettingsData>('/api/settings'),
+  updateSettings: (body: SettingsInput) =>
+    request<SettingsData>('/api/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 };

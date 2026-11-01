@@ -11,6 +11,7 @@ import OrdersPage from './pages/OrdersPage';
 import PosPage from './pages/PosPage';
 import RecipePage from './pages/RecipePage';
 import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
 import SetupPage from './pages/SetupPage';
 import TeamPage from './pages/TeamPage';
 
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="customers" element={<CustomersPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="team" element={<TeamPage />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path=":module" element={<ModulePage />} />
           <Route path="*" element={<NotFound />} />
         </Route>

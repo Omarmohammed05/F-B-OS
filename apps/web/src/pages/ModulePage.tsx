@@ -4,7 +4,6 @@ import {
   Boxes,
   Monitor,
   ReceiptText,
-  SlidersHorizontal,
   Sparkles,
   UserCog,
   Users,
@@ -25,7 +24,6 @@ const ICONS: Record<ModuleKey, LucideIcon> = {
   loyalty: Sparkles,
   reports: BarChart3,
   team: UserCog,
-  settings: SlidersHorizontal,
 };
 
 export default function ModulePage() {
