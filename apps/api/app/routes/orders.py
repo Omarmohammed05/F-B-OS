@@ -10,6 +10,7 @@ from ..db import get_db
 from ..deps import current_tenant
 from ..loyalty import award_stamp
 from ..models import Customer, Order, OrderItem, Product, Tenant
+from ..stock import deduct_for_order
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -252,8 +253,12 @@ def update_order(order_id: int, patch: OrderPatch, db: Session = Depends(get_db)
 
     order.status = patch.status
     if order.status == "served":
-        # A served ticket is the visit a loyalty card counts.
+        # A served ticket is the visit a loyalty card counts, and the sale that
+        # consumes the recipe ingredients on the guest's plate.
         award_stamp(db, tenant, order.customer_id)
+        deduct_for_order(
+            db, tenant, order, order_items(db, [order.id]).get(order.id, [])
+        )
     db.commit()
     db.refresh(order)
     return serialize_one(db, order)

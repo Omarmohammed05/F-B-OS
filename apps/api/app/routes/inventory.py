@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import current_tenant
-from ..models import Ingredient, RecipeLine, Tenant
+from ..models import Ingredient, RecipeLine, StockMovement, Tenant
+from ..stock import is_low, recent_movements, record
 
 router = APIRouter(prefix="/api/ingredients", tags=["inventory"])
 
@@ -27,8 +28,20 @@ def usage_counts(db: Session, tenant_id: int) -> dict[int, int]:
     return {ingredient_id: count for ingredient_id, count in rows}
 
 
-def serialize_ingredients(db: Session, tenant: Tenant) -> dict:
+def ingested_ingredients(db: Session, tenant_id: int) -> set[int]:
+    """Ingredients that already have stock history (deleting them is refused)."""
+    rows = (
+        db.query(StockMovement.ingredient_id)
+        .filter(StockMovement.tenant_id == tenant_id)
+        .distinct()
+        .all()
+    )
+    return {ingredient_id for (ingredient_id,) in rows}
+
+
+def serialize_inventory(db: Session, tenant: Tenant) -> dict:
     counts = usage_counts(db, tenant.id)
+    stocked = ingested_ingredients(db, tenant.id)
     rows = (
         db.query(Ingredient)
         .filter_by(tenant_id=tenant.id)
@@ -44,10 +57,14 @@ def serialize_ingredients(db: Session, tenant: Tenant) -> dict:
                 "unit": row.unit,
                 "unit_cost": row.unit_cost,
                 "stock_qty": row.stock_qty,
+                "par_level": row.par_level,
+                "is_low": is_low(row),
                 "recipes_using": counts.get(row.id, 0),
+                "has_movements": row.id in stocked,
             }
             for row in rows
-        ]
+        ],
+        "movements": recent_movements(db, tenant),
     }
 
 
@@ -71,6 +88,7 @@ class IngredientIn(BaseModel):
     unit: Unit = "g"
     unit_cost: float = Field(ge=0)
     stock_qty: float = Field(ge=0)
+    par_level: float = Field(default=0, ge=0)
 
 
 class IngredientPatch(BaseModel):
@@ -79,11 +97,20 @@ class IngredientPatch(BaseModel):
     unit: Unit | None = None
     unit_cost: float | None = Field(default=None, ge=0)
     stock_qty: float | None = Field(default=None, ge=0)
+    par_level: float | None = Field(default=None, ge=0)
+
+
+class MovementIn(BaseModel):
+    """A delivery (`purchase`) or shrinkage (`waste`), always a positive amount."""
+
+    qty: float = Field(gt=0, le=100000)
+    reason: Literal["purchase", "waste"]
+    note: str = Field(default="", max_length=120)
 
 
 @router.get("")
 def list_ingredients(db: Session = Depends(get_db)):
-    return serialize_ingredients(db, current_tenant(db))
+    return serialize_inventory(db, current_tenant(db))
 
 
 @router.post("", status_code=201)
@@ -91,7 +118,7 @@ def create_ingredient(payload: IngredientIn, db: Session = Depends(get_db)):
     tenant = current_tenant(db)
     db.add(Ingredient(tenant_id=tenant.id, **payload.model_dump()))
     db.commit()
-    return serialize_ingredients(db, tenant)
+    return serialize_inventory(db, tenant)
 
 
 @router.patch("/{ingredient_id}")
@@ -100,10 +127,38 @@ def update_ingredient(
 ):
     tenant = current_tenant(db)
     ingredient = get_ingredient(db, tenant, ingredient_id)
-    for field, value in patch.model_dump(exclude_unset=True).items():
+    changes = patch.model_dump(exclude_unset=True)
+    # A manual stock edit is still a ledger entry, so the balance stays explained.
+    new_stock = changes.pop("stock_qty", None)
+    for field, value in changes.items():
         setattr(ingredient, field, value)
+    if new_stock is not None and new_stock != ingredient.stock_qty:
+        record(
+            db,
+            ingredient,
+            new_stock - ingredient.stock_qty,
+            "adjustment",
+            note="manual edit",
+        )
     db.commit()
-    return serialize_ingredients(db, tenant)
+    return serialize_inventory(db, tenant)
+
+
+@router.post("/{ingredient_id}/movements", status_code=201)
+def create_movement(
+    ingredient_id: int, payload: MovementIn, db: Session = Depends(get_db)
+):
+    tenant = current_tenant(db)
+    ingredient = get_ingredient(db, tenant, ingredient_id)
+    if payload.reason == "waste" and payload.qty > ingredient.stock_qty:
+        raise HTTPException(
+            status_code=409,
+            detail="There is not that much on hand to write off.",
+        )
+    delta = payload.qty if payload.reason == "purchase" else -payload.qty
+    record(db, ingredient, delta, payload.reason, note=payload.note)
+    db.commit()
+    return serialize_inventory(db, tenant)
 
 
 @router.delete("/{ingredient_id}")
@@ -123,6 +178,11 @@ def delete_ingredient(ingredient_id: int, db: Session = Depends(get_db)):
             status_code=409,
             detail="This ingredient is used in a recipe. Remove it there first.",
         )
+    if ingredient.id in ingested_ingredients(db, tenant.id):
+        raise HTTPException(
+            status_code=409,
+            detail="This ingredient has stock history and cannot be deleted.",
+        )
     db.delete(ingredient)
     db.commit()
-    return serialize_ingredients(db, tenant)
+    return serialize_inventory(db, tenant)

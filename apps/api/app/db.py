@@ -20,6 +20,8 @@ class Base(DeclarativeBase):
 # every sandbox branch) picks them up without Alembic.
 ADDITIVE_COLUMNS = [
     ("orders", "customer_id", "INTEGER NOT NULL DEFAULT 0"),
+    # Phase 8: restock threshold on the stock ledger cache.
+    ("ingredients", "par_level", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
 ]
 
 ADDITIVE_INDEXES = [

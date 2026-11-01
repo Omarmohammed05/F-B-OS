@@ -1,8 +1,19 @@
-import { Lock, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowDownUp, Lock, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import IngredientDialog from '../components/inventory/IngredientDialog';
-import { api, type Ingredient, type IngredientsData } from '../lib/api';
-import { formatMoney, formatNumber } from '../lib/format';
+import StockMoveDialog from '../components/inventory/StockMoveDialog';
+import {
+  api,
+  type Ingredient,
+  type IngredientsData,
+  type StockMovement,
+} from '../lib/api';
+import {
+  formatDayShort,
+  formatClock,
+  formatMoney,
+  formatNumber,
+} from '../lib/format';
 import { useLang, type TranslationKey } from '../lib/i18n';
 import { useAppData } from '../lib/store';
 
@@ -10,6 +21,13 @@ const UNIT_KEY: Record<string, TranslationKey> = {
   g: 'inv.units.g',
   ml: 'inv.units.ml',
   pc: 'inv.units.pc',
+};
+
+const REASON_KEY: Record<StockMovement['reason'], TranslationKey> = {
+  sale: 'inv.reason.sale',
+  purchase: 'inv.reason.purchase',
+  waste: 'inv.reason.waste',
+  adjustment: 'inv.reason.adjustment',
 };
 
 export default function InventoryPage() {
@@ -23,6 +41,7 @@ export default function InventoryPage() {
   const [query, setQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Ingredient | null>(null);
+  const [moving, setMoving] = useState<Ingredient | null>(null);
   const [confirming, setConfirming] = useState<number | null>(null);
   const [nonce, setNonce] = useState(0);
 
@@ -164,7 +183,7 @@ export default function InventoryPage() {
                 <th className="px-4 py-2.5 text-start font-semibold">
                   {t('inv.usedIn')}
                 </th>
-                <th className="w-24 px-4 py-2.5" />
+                <th className="w-32 px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -172,25 +191,34 @@ export default function InventoryPage() {
                 const unitLabel = t(
                   UNIT_KEY[ingredient.unit] ?? 'inv.units.pc',
                 );
+                const locked =
+                  ingredient.recipes_using > 0 || ingredient.has_movements;
+                const name =
+                  lang === 'ar' ? ingredient.name_ar : ingredient.name_en;
                 return (
                   <tr
                     key={ingredient.id}
                     className="border-t border-line align-middle"
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-ink">
-                        {lang === 'ar' ? ingredient.name_ar : ingredient.name_en}
-                      </p>
+                      <p className="font-medium text-ink">{name}</p>
                       <p className="text-[12px] text-ink-2">{unitLabel}</p>
                     </td>
                     <td className="px-4 py-3 tabular-nums text-ink">
                       {formatMoney(lang, ingredient.unit_cost, currency, 3)}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-ink">
-                      {formatNumber(lang, ingredient.stock_qty, 1)}{' '}
-                      <span className="text-[12px] text-ink-2">
-                        {unitLabel}
+                    <td className="px-4 py-3">
+                      <span className="tabular-nums text-ink">
+                        {formatNumber(lang, ingredient.stock_qty, 1)}{' '}
+                        <span className="text-[12px] text-ink-2">
+                          {unitLabel}
+                        </span>
                       </span>
+                      {ingredient.is_low ? (
+                        <span className="chip ms-2 bg-surface-2 text-[color:var(--danger)]">
+                          {t('inv.low')}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       {ingredient.recipes_using > 0 ? (
@@ -207,15 +235,27 @@ export default function InventoryPage() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           type="button"
+                          onClick={() => setMoving(ingredient)}
+                          aria-label={`${t('inv.recordMove')} — ${name}`}
+                          className="icon-btn h-9 w-9"
+                        >
+                          <ArrowDownUp size={14} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openEdit(ingredient)}
-                          aria-label={t('menu.edit')}
+                          aria-label={`${t('menu.edit')} — ${name}`}
                           className="icon-btn h-9 w-9"
                         >
                           <Pencil size={14} />
                         </button>
-                        {ingredient.recipes_using > 0 ? (
+                        {locked ? (
                           <span
-                            title={t('inv.deleteBlocked')}
+                            title={
+                              ingredient.recipes_using > 0
+                                ? t('inv.deleteBlocked')
+                                : t('inv.hasHistory')
+                            }
                             className="flex h-9 w-9 items-center justify-center text-ink-2"
                           >
                             <Lock size={14} />
@@ -248,10 +288,73 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {catalog ? (
+        <div className="card p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-[17px] font-semibold text-ink">
+              {t('inv.ledger')}
+            </h2>
+            <p className="text-[12px] text-ink-2">{t('inv.ledgerHint')}</p>
+          </div>
+          {catalog.movements.length === 0 ? (
+            <p className="mt-3 text-[13px] text-ink-2">
+              {t('inv.ledgerEmpty')}
+            </p>
+          ) : (
+            <ul className="mt-2 divide-y divide-line">
+              {catalog.movements.map((movement) => {
+                const unitLabel = t(
+                  UNIT_KEY[movement.unit] ?? 'inv.units.pc',
+                );
+                const name =
+                  (lang === 'ar' ? movement.name_ar : movement.name_en) || '—';
+                return (
+                  <li
+                    key={movement.id}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-[13px]"
+                  >
+                    <span className="font-medium text-ink">{name}</span>
+                    <span className="chip bg-surface-2 text-ink-2">
+                      {t(REASON_KEY[movement.reason])}
+                    </span>
+                    <span
+                      className={
+                        movement.delta < 0
+                          ? 'tabular-nums font-semibold text-[color:var(--danger)]'
+                          : 'tabular-nums font-semibold text-ink'
+                      }
+                    >
+                      {movement.delta < 0 ? '−' : '+'}
+                      {formatNumber(lang, Math.abs(movement.delta), 1)}{' '}
+                      {unitLabel}
+                    </span>
+                    {movement.note ? (
+                      <span className="text-ink-2">{movement.note}</span>
+                    ) : null}
+                    <span className="ms-auto tabular-nums text-[12px] text-ink-2">
+                      {movement.created_at
+                        ? `${formatDayShort(lang, movement.created_at)} · ${formatClock(lang, movement.created_at)}`
+                        : ''}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+
       <IngredientDialog
         open={dialogOpen}
         ingredient={editing}
         onClose={() => setDialogOpen(false)}
+        onSaved={applyCatalog}
+      />
+
+      <StockMoveDialog
+        open={moving !== null}
+        ingredient={moving}
+        onClose={() => setMoving(null)}
         onSaved={applyCatalog}
       />
     </div>

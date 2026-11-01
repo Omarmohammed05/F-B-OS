@@ -131,7 +131,10 @@ class Ingredient(Base):
     name_en: Mapped[str] = mapped_column(String(120))
     unit: Mapped[str] = mapped_column(String(8), default="g")
     unit_cost: Mapped[float] = mapped_column(Float, default=0)
+    # Cached balance: `stock_movements` is the history that explains it.
     stock_qty: Mapped[float] = mapped_column(Float, default=0)
+    # Restock threshold. 0 means "only warn when the shelf is empty".
+    par_level: Mapped[float] = mapped_column(Float, default=0)
 
 
 class RecipeLine(Base):
@@ -207,6 +210,27 @@ class OrderItem(Base):
     emoji: Mapped[str] = mapped_column(String(8), default="🍽️")
     unit_price: Mapped[float] = mapped_column(Float, default=0)
     qty: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class StockMovement(Base):
+    """Immutable ledger row: every change to an ingredient's on-hand amount.
+
+    `order_id` is a plain integer (no foreign key) like `order_items.product_id`,
+    so deleting a ticket never rewrites the stock history.
+    """
+
+    __tablename__ = "stock_movements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    ingredient_id: Mapped[int] = mapped_column(
+        ForeignKey("ingredients.id"), index=True
+    )
+    delta: Mapped[float] = mapped_column(Float, default=0)
+    reason: Mapped[str] = mapped_column(String(16), default="adjustment")
+    order_id: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    note: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class LoyaltyProgram(Base):

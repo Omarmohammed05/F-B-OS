@@ -1,12 +1,13 @@
 # Sufra OS
 
 Smart F&B micro-ERP for Egyptian restaurants and cafés. This repository contains
-**Phases 0–6** — an Arabic-first (RTL), calm Apple-style application shell with
+**Phases 0–8** — an Arabic-first (RTL), calm Apple-style application shell with
 language/dark-mode switching and the store setup flow, plus working **menu
 management**, the **recipe builder**, the **POS and orders board**, the
 **customer book**, **reports** computed from real orders, the **team roster**,
-a **live dashboard**, a **settings** surface that edits the store itself and
-**loyalty stamp cards** with points and tiers.
+a **live dashboard**, a **settings** surface that edits the store itself,
+**loyalty stamp cards** with points, tiers and Google Wallet passes, and a
+**stock ledger** that deducts ingredients when a ticket is served.
 
 ## What works
 
@@ -18,9 +19,11 @@ a **live dashboard**, a **settings** surface that edits the store itself and
 - **Recipe builder** (`/menu/:id/recipe`) — link ingredients and quantities to a
   product; plate cost, margin and food-cost % update live and are recalculated
   from the ingredient catalog every time. Products without a recipe are flagged.
-- **Ingredients** (`/inventory`) — raw materials with unit, cost per unit and
-  on-hand quantity; these costs drive every recipe. Used ingredients can't be
-  deleted until removed from their recipes.
+- **Ingredients** (`/inventory`) — raw materials with unit, cost per unit,
+  on-hand quantity and a par level; these costs drive every recipe. A served
+  ticket deducts the recipe ingredients it used, deliveries and waste are recorded
+  by hand, and the stock ledger shows every change with its reason. Used
+  ingredients can't be deleted until removed from their recipes.
 - **POS & orders** (`/pos`, `/orders`) — build a ticket, send it to the kitchen,
   then move it new → preparing → served on the live board.
 - **Customers** (`/customers`) — guest profiles with visits, lifetime spend and
@@ -44,8 +47,8 @@ a **live dashboard**, a **settings** surface that edits the store itself and
 
 API: `/api/menu`, `/api/menu/categories`, `/api/menu/products`,
 `/api/menu/products/{id}/recipe`, `/api/ingredients`, `/api/pos`, `/api/orders`,
-`/api/customers`, `/api/loyalty`, `/api/reports`, `/api/reports/export.csv`,
-`/api/team`, `/api/settings` (interactive docs at http://localhost:8000/docs).
+`/api/customers`, `/api/loyalty`, `/api/ingredients/{id}/movements`,
+`/api/reports`, `/api/reports/export.csv`, `/api/team`, `/api/settings` (interactive docs at http://localhost:8000/docs).
 
 ## Stack
 

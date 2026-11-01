@@ -123,19 +123,21 @@ CATEGORIES = [
     ("سندوتشات", "Sandwiches", "🥪"),
 ]
 
+# (name_ar, name_en, unit, unit_cost, stock_qty, par_level). Cheddar and tomato
+# start below their par level so the low-stock flag is visible on a fresh store.
 INGREDIENTS = [
-    ("حبوب قهوة", "Coffee beans", "g", 0.45, 5000),
-    ("حليب", "Milk", "ml", 0.038, 24000),
-    ("سكر", "Sugar", "g", 0.022, 12000),
-    ("صوص شوكولاتة", "Chocolate sauce", "ml", 0.12, 3000),
-    ("كريمة خفق", "Whipping cream", "ml", 0.09, 4000),
-    ("دقيق", "Flour", "g", 0.012, 15000),
-    ("جبن كريمي", "Cream cheese", "g", 0.14, 4000),
-    ("زبدة", "Butter", "g", 0.14, 3000),
-    ("خبز توست", "Toast bread", "pc", 3.5, 120),
-    ("جبن شيدر", "Cheddar cheese", "g", 0.24, 2500),
-    ("طماطم", "Tomato", "g", 0.02, 5000),
-    ("كوب ورقي", "Paper cup", "pc", 1.2, 800),
+    ("حبوب قهوة", "Coffee beans", "g", 0.45, 5000, 3000),
+    ("حليب", "Milk", "ml", 0.038, 24000, 12000),
+    ("سكر", "Sugar", "g", 0.022, 12000, 6000),
+    ("صوص شوكولاتة", "Chocolate sauce", "ml", 0.12, 3000, 1500),
+    ("كريمة خفق", "Whipping cream", "ml", 0.09, 4000, 2500),
+    ("دقيق", "Flour", "g", 0.012, 15000, 7000),
+    ("جبن كريمي", "Cream cheese", "g", 0.14, 4000, 2000),
+    ("زبدة", "Butter", "g", 0.14, 3000, 1500),
+    ("خبز توست", "Toast bread", "pc", 3.5, 120, 60),
+    ("جبن شيدر", "Cheddar cheese", "g", 0.24, 2500, 3000),
+    ("طماطم", "Tomato", "g", 0.02, 5000, 6000),
+    ("كوب ورقي", "Paper cup", "pc", 1.2, 800, 400),
 ]
 
 PRODUCTS = [
@@ -320,7 +322,7 @@ def seed() -> None:
             row.name_en: row.id
             for row in db.query(Ingredient).filter_by(tenant_id=tenant.id).all()
         }
-        for name_ar, name_en, unit, unit_cost, stock_qty in INGREDIENTS:
+        for name_ar, name_en, unit, unit_cost, stock_qty, par_level in INGREDIENTS:
             if name_en in ingredient_ids:
                 continue
             ingredient = Ingredient(
@@ -330,6 +332,7 @@ def seed() -> None:
                 unit=unit,
                 unit_cost=unit_cost,
                 stock_qty=stock_qty,
+                par_level=par_level,
             )
             db.add(ingredient)
             db.flush()

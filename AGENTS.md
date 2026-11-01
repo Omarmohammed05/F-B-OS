@@ -1,8 +1,9 @@
 # AGENTS.md — Sufra OS
 
-Phases 0–6: foundation, menu management, the recipe builder, the POS, the orders
+Phases 0–8: foundation, menu management, the recipe builder, the POS, the orders
 board, the customer book, real reports, the team roster, a live dashboard, the
-store settings surface and loyalty stamp cards are all working features. Every
+store settings surface, loyalty stamp cards with Google Wallet passes and the
+stock ledger (automatic deduction on served tickets) are all working features. Every
 navigation destination now has a real page, so the old `ModulePage` placeholder
 and `lib/modules.ts` are gone — a URL that matches no route renders `NotFound`.
 
@@ -21,6 +22,7 @@ curl -s "localhost:3000/api/reports?days=7" | head -c 200 # sales / food cost
 curl -s localhost:3000/api/team | head -c 200             # staff roster
 curl -s localhost:3000/api/settings | head -c 200         # store profile + tables
 curl -s localhost:3000/api/loyalty | head -c 200          # program + member cards
+curl -s localhost:3000/api/ingredients | head -c 300      # stock balances + ledger
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
 ```
@@ -334,3 +336,42 @@ service.
   signature. Class creation and the actual save need the real key plus a Google
   account on the issuer's test-account list; in demo mode any other account is
   refused by Google, not by this app.
+
+## Phase 8: the stock ledger
+
+- `stock_movements` is a new table (plain `create_all`), so the only additive
+  column this phase added is `ingredients.par_level` — it is in
+  `ADDITIVE_COLUMNS` in `apps/api/app/db.py` **and** in `models.py`. An existing
+  database keeps the rows it has, so seeded ingredients arrive with `par_level`
+  0 until someone sets one; the seed values only apply to a fresh store.
+- `ingredients.stock_qty` stays the cached balance. It only ever moves through
+  `record()` in `apps/api/app/stock.py`, which writes one immutable
+  `stock_movements` row and adjusts the cache by the same delta. Nothing else may
+  write `stock_qty` — the API never sets it directly.
+- Reasons: `sale` (a served ticket), `purchase` (delivery), `waste` (shrinkage)
+  and `adjustment` (a manual stock edit in the ingredient sheet). Because a
+  direct `PATCH /api/ingredients/{id}` with `stock_qty` records an `adjustment`,
+  the ledger always explains the balance and no history is rewritten.
+- A ticket that moves to **served** writes one negative `sale` movement per
+  ingredient its recipe consumes (`deduct_for_order`, called next to
+  `award_stamp`). Products without a recipe consume nothing, the movement carries
+  the ticket number in `note`, and `order_id` is a plain integer with no foreign
+  key so deleting a ticket never rewrites stock history.
+- Deduction is idempotent per order (it skips when a `sale` row already exists for
+  that `order_id`), and only `served` deducts — `cancelled` never awards or
+  deducts. Stock may go negative: a plate that was served really did consume the
+  ingredients, even when the delivery was never recorded.
+- `is_low` is `stock_qty <= par_level`, so a par level of 0 only flags an empty
+  shelf. It is derived per request, never stored.
+- Endpoints: `POST /api/ingredients/{id}/movements` (`{qty > 0, reason:
+  purchase|waste, note?}`, 201 with the whole inventory payload; writing off more
+  than is on hand returns **409**). `GET /api/ingredients` now carries `par_level`,
+  `is_low`, `has_movements` per ingredient plus the newest 40 `movements` with
+  ingredient names, so the page renders the ledger from the same response.
+- An ingredient with stock history cannot be deleted (**409**), like one used in a
+  recipe; `has_movements` drives the lock in the UI. Test with a scratch
+  ingredient and remove its `stock_movements` rows before deleting it.
+- UI: `/inventory` gained the low-stock chip, a per-row movement action
+  (`components/inventory/StockMoveDialog.tsx`, delivery or waste) and the stock
+  ledger card. The ingredient sheet gained the par-level field. Row action labels
+  include the ingredient name so each is individually reachable.

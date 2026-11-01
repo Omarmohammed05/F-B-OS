@@ -28,6 +28,7 @@ export default function IngredientDialog({
   const [unit, setUnit] = useState<IngredientUnit>('g');
   const [unitCost, setUnitCost] = useState('');
   const [stock, setStock] = useState('');
+  const [parLevel, setParLevel] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -39,6 +40,7 @@ export default function IngredientDialog({
     setUnit(ingredient?.unit ?? 'g');
     setUnitCost(ingredient ? String(ingredient.unit_cost) : '');
     setStock(ingredient ? String(ingredient.stock_qty) : '');
+    setParLevel(ingredient ? String(ingredient.par_level) : '');
     setSaving(false);
     setError(null);
     setConfirmDelete(false);
@@ -50,12 +52,20 @@ export default function IngredientDialog({
     const en = nameEn.trim();
     const cost = Number(unitCost);
     const quantity = stock === '' ? 0 : Number(stock);
+    const par = parLevel === '' ? 0 : Number(parLevel);
 
     if (!ar || !en) {
       setError(t('form.required'));
       return;
     }
-    if (!Number.isFinite(cost) || cost < 0 || !Number.isFinite(quantity) || quantity < 0) {
+    if (
+      !Number.isFinite(cost) ||
+      cost < 0 ||
+      !Number.isFinite(quantity) ||
+      quantity < 0 ||
+      !Number.isFinite(par) ||
+      par < 0
+    ) {
       setError(t('form.amount'));
       return;
     }
@@ -68,6 +78,7 @@ export default function IngredientDialog({
       unit,
       unit_cost: cost,
       stock_qty: quantity,
+      par_level: par,
     };
     try {
       const data = ingredient
@@ -180,7 +191,7 @@ export default function IngredientDialog({
           </label>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-[13px] font-medium text-ink-2">
               {t('inv.unit')}
@@ -226,6 +237,25 @@ export default function IngredientDialog({
               value={stock}
               onChange={(event) => setStock(event.target.value)}
             />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-[13px] font-medium text-ink-2">
+              {t('inv.parLevel')}
+            </span>
+            <input
+              className="field tabular-nums"
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              dir="ltr"
+              name="par_level"
+              value={parLevel}
+              onChange={(event) => setParLevel(event.target.value)}
+            />
+            <span className="mt-1 block text-[12px] text-ink-2">
+              {t('inv.parLevelHint')}
+            </span>
           </label>
         </div>
 

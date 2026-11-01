@@ -113,10 +113,29 @@ export type Ingredient = {
   unit: IngredientUnit;
   unit_cost: number;
   stock_qty: number;
+  par_level: number;
+  is_low: boolean;
   recipes_using: number;
+  has_movements: boolean;
 };
 
-export type IngredientsData = { ingredients: Ingredient[] };
+export type StockMovement = {
+  id: number;
+  ingredient_id: number;
+  name_ar: string;
+  name_en: string;
+  unit: string;
+  delta: number;
+  reason: 'sale' | 'purchase' | 'waste' | 'adjustment';
+  order_id: number;
+  note: string;
+  created_at: string | null;
+};
+
+export type IngredientsData = {
+  ingredients: Ingredient[];
+  movements: StockMovement[];
+};
 
 export type IngredientInput = {
   name_ar: string;
@@ -124,6 +143,13 @@ export type IngredientInput = {
   unit: IngredientUnit;
   unit_cost: number;
   stock_qty: number;
+  par_level: number;
+};
+
+export type StockMoveInput = {
+  qty: number;
+  reason: 'purchase' | 'waste';
+  note?: string;
 };
 
 export type RecipeLineInput = { ingredient_id: number; qty: number };
@@ -433,6 +459,11 @@ export const api = {
   updateIngredient: (id: number, body: Partial<IngredientInput>) =>
     request<IngredientsData>(`/api/ingredients/${id}`, {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  addStockMovement: (id: number, body: StockMoveInput) =>
+    request<IngredientsData>(`/api/ingredients/${id}/movements`, {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
   deleteIngredient: (id: number) =>
