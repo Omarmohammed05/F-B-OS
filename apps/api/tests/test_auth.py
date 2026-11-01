@@ -43,7 +43,8 @@ def test_sign_in_me_and_sign_out(anonymous):
     assert signed_in.status_code == 200
     body = signed_in.json()
     assert body["username"] == ADMIN["username"]
-    assert body["role"] == "admin"
+    # The seeded account is the platform owner (AGENTS.md).
+    assert body["role"] == "owner"
     assert "password_hash" not in body
 
     me = anonymous.get("/api/auth/me")

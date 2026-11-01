@@ -1,13 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, auth
 from ..db import get_db
 from ..deps import current_tenant
-from ..models import DailyMetric, Order, Tenant
-from ..security import client_host
+from ..models import DailyMetric, Order, Staff, Tenant
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -62,7 +61,11 @@ def get_settings(db: Session = Depends(get_db)):
 
 @router.patch("")
 def update_settings(
-    patch: SettingsIn, request: Request, db: Session = Depends(get_db)
+    patch: SettingsIn,
+    # The store profile is restaurant information: staff may read it, only the
+    # restaurant's admin (or the platform owner) may change it.
+    user: Staff = Depends(auth.require_admin),
+    db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     changes = patch.model_dump(exclude_unset=True, exclude_none=True)
@@ -98,7 +101,7 @@ def update_settings(
         "tenant",
         tenant.id,
         ", ".join(f"{field}={value}" for field, value in changes.items()),
-        actor=client_host(request),
+        actor=user.name,
     )
     db.commit()
     return serialize_settings(db, tenant)

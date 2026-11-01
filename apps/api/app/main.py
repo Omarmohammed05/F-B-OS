@@ -21,6 +21,7 @@ from .routes import loyalty as loyalty_routes
 from .routes import menu as menu_routes
 from .routes import notifications as notification_routes
 from .routes import orders as order_routes
+from .routes import platform as platform_routes
 from .routes import pos as pos_routes
 from .routes import reports as report_routes
 from .routes import settings as setting_routes
@@ -74,7 +75,7 @@ app.include_router(customer_routes.router)
 app.include_router(loyalty_routes.router)
 app.include_router(report_routes.router)
 app.include_router(team_routes.router)
-app.include_router(team_routes.restaurant_router)
+app.include_router(platform_routes.router)
 app.include_router(setting_routes.router)
 app.include_router(audit_routes.router)
 app.include_router(notification_routes.router)

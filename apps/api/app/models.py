@@ -20,6 +20,13 @@ class Tenant(Base):
     # The location the counter is working in. 0 means "no branch picked yet",
     # and `deps.active_branch` falls back to the store's first branch.
     active_branch_id: Mapped[int] = mapped_column(Integer, default=0)
+    # What the platform owner charges this restaurant for the software. Owner
+    # income, never restaurant sales — see `SoftwarePayment` for what was paid.
+    software_price: Mapped[float] = mapped_column(Float, default=0)
+    # Blocking cuts the restaurant off (no sign-in) but keeps every row.
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set when the owner removes a restaurant but keeps its history for the books.
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Branch(Base):
@@ -193,7 +200,9 @@ class Staff(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     phone: Mapped[str] = mapped_column(String(40), default="")
-    # admin / owner / manager / cashier / kitchen. Only `admin` creates accounts.
+    # owner (the platform, across restaurants) / admin (one restaurant) /
+    # manager / cashier / kitchen. Staff never manage accounts or the store
+    # profile; that is the admin's and the owner's job.
     role: Mapped[str] = mapped_column(String(16), default="cashier")
     # Empty for a roster entry that has no sign-in (the seed still has those).
     username: Mapped[str] = mapped_column(String(60), default="", index=True)
@@ -201,6 +210,25 @@ class Staff(Base):
     # Set when the first sign-in tour is finished or skipped.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class SoftwarePayment(Base):
+    """One payment the platform owner collected from a restaurant.
+
+    This is the owner's own income (what the software was sold for), completely
+    apart from the restaurant's ticket sales. Monthly income is the sum of the
+    rows whose `paid_on` falls in that month.
+    """
+
+    __tablename__ = "software_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    amount: Mapped[float] = mapped_column(Float, default=0)
+    paid_on: Mapped[date] = mapped_column(Date)
+    note: Mapped[str] = mapped_column(String(160), default="")
+    created_by: Mapped[str] = mapped_column(String(60), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

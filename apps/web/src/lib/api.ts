@@ -339,6 +339,88 @@ export type Restaurant = {
   name_en: string;
 };
 
+export type RestaurantAdmin = {
+  id: number;
+  name: string;
+  username: string;
+};
+
+/** One restaurant as the platform owner sees it: trade on one side, billing on the other. */
+export type PlatformRestaurant = {
+  id: number;
+  name_ar: string;
+  name_en: string;
+  currency: string;
+  software_price: number;
+  is_blocked: boolean;
+  is_deleted: boolean;
+  admin: RestaurantAdmin | null;
+  staff_count: number;
+  sales_month: number;
+  income_month: number;
+  income_total: number;
+};
+
+export type RestaurantsData = {
+  restaurants: PlatformRestaurant[];
+  summary: {
+    total: number;
+    active: number;
+    blocked: number;
+    archived: number;
+    monthly_price: number;
+    income_month: number;
+    income_total: number;
+  };
+  currency: string;
+  month: string;
+  owner_tenant_id: number;
+};
+
+export type RestaurantCreateInput = {
+  name_ar: string;
+  name_en: string;
+  software_price: number;
+  admin_name?: string;
+  admin_username?: string;
+  admin_password?: string;
+};
+
+export type RestaurantPatchInput = {
+  name_ar?: string;
+  name_en?: string;
+  software_price?: number;
+};
+
+export type IncomeEntry = {
+  id: number;
+  restaurant_id: number;
+  name_ar: string;
+  name_en: string;
+  amount: number;
+  paid_on: string;
+  note: string;
+};
+
+export type IncomeMonth = {
+  month: string;
+  total: number;
+  count: number;
+  entries: IncomeEntry[];
+};
+
+export type IncomeData = {
+  months: IncomeMonth[];
+  currency: string;
+  summary: { this_month: number; total: number; monthly_price: number };
+};
+
+export type PaymentInput = {
+  amount: number;
+  paid_on?: string;
+  note?: string;
+};
+
 export type StaffMember = {
   id: number;
   name: string;
@@ -587,11 +669,37 @@ export const api = {
     request<TeamData>(
       restaurantId ? `/api/team?restaurant_id=${restaurantId}` : '/api/team',
     ),
-  createRestaurant: (body: RestaurantInput) =>
-    request<{ restaurants: Restaurant[]; created: Restaurant }>(
-      '/api/restaurants',
-      { method: 'POST', body: JSON.stringify(body) },
+  restaurants: () => request<RestaurantsData>('/api/restaurants'),
+  createRestaurant: (body: RestaurantCreateInput) =>
+    request<RestaurantsData>('/api/restaurants', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateRestaurant: (id: number, body: RestaurantPatchInput) =>
+    request<RestaurantsData>(`/api/restaurants/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  blockRestaurant: (id: number, blocked: boolean) =>
+    request<RestaurantsData>(`/api/restaurants/${id}/block`, {
+      method: 'POST',
+      body: JSON.stringify({ blocked }),
+    }),
+  deleteRestaurant: (id: number, keepData: boolean) =>
+    request<RestaurantsData>(
+      `/api/restaurants/${id}?keep_data=${keepData}`,
+      { method: 'DELETE' },
     ),
+  income: (months = 6) => request<IncomeData>(`/api/income?months=${months}`),
+  recordPayment: (id: number, body: PaymentInput) =>
+    request<IncomeData>(`/api/restaurants/${id}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deletePayment: (id: number, paymentId: number) =>
+    request<IncomeData>(`/api/restaurants/${id}/payments/${paymentId}`, {
+      method: 'DELETE',
+    }),
   createStaff: (body: StaffInput) =>
     request<TeamData>('/api/team', {
       method: 'POST',

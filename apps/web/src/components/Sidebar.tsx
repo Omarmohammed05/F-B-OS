@@ -4,7 +4,7 @@ import type { Branch } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 import { NAV_GROUPS } from '../lib/nav';
-import { ROLE_LABEL_KEY } from '../lib/roles';
+import { isOwner, ROLE_LABEL_KEY } from '../lib/roles';
 import { useTheme } from '../lib/theme';
 import BranchMenu from './BranchMenu';
 import SetupCard from './SetupCard';
@@ -27,6 +27,7 @@ export default function Sidebar({
   const { t, lang, setLang } = useLang();
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
+  const owner = isOwner(user?.role);
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto border-e border-line bg-surface px-3 py-5">
@@ -44,30 +45,32 @@ export default function Sidebar({
       />
 
       <nav className="flex flex-col gap-4">
-        {NAV_GROUPS.map((group) => (
+        {NAV_GROUPS.filter((group) => !group.ownerOnly || owner).map((group) => (
           <div key={group.labelKey}>
             <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-2">
               {t(group.labelKey)}
             </p>
             <ul className="flex flex-col gap-0.5">
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <li key={item.to}>
-                    <NavLink
-                      to={item.to}
-                      end={item.end}
-                      onClick={onNavigate}
-                      className={({ isActive }) =>
-                        `nav-item ${isActive ? 'nav-item-active' : ''}`
-                      }
-                    >
-                      <Icon size={18} strokeWidth={1.7} />
-                      <span className="truncate">{t(item.labelKey)}</span>
-                    </NavLink>
-                  </li>
-                );
-              })}
+              {group.items
+                .filter((item) => !item.ownerOnly || owner)
+                .map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.to}>
+                      <NavLink
+                        to={item.to}
+                        end={item.end}
+                        onClick={onNavigate}
+                        className={({ isActive }) =>
+                          `nav-item ${isActive ? 'nav-item-active' : ''}`
+                        }
+                      >
+                        <Icon size={18} strokeWidth={1.7} />
+                        <span className="truncate">{t(item.labelKey)}</span>
+                      </NavLink>
+                    </li>
+                  );
+                })}
             </ul>
           </div>
         ))}

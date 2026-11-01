@@ -1,10 +1,11 @@
 """The roster, and the user accounts on top of it.
 
-Anyone signed in can read their own restaurant's roster; only an `admin` can add,
-edit or remove people. An admin also works across restaurants: they choose which
-restaurant an account belongs to, and can open a new restaurant that has none
-yet. Account names are unique across the whole platform, because the sign-in
-screen has no restaurant picker — the account itself says which store it opens.
+Anyone signed in can read their own restaurant's roster; only that restaurant's
+`admin` can add, edit or remove people. The platform `owner` sits above them:
+they may open any restaurant's roster, and they are the only one who can hand out
+the platform role itself. Account names are unique across the whole platform,
+because the sign-in screen has no restaurant picker — the account itself says
+which store it opens.
 """
 
 import re
@@ -21,7 +22,6 @@ from ..deps import current_tenant
 from ..models import AuthSession, Staff, Tenant
 
 router = APIRouter(prefix="/api/team", tags=["team"])
-restaurant_router = APIRouter(prefix="/api/restaurants", tags=["restaurants"])
 
 StaffRole = Literal["admin", "owner", "manager", "cashier", "kitchen"]
 ROLES = ("admin", "owner", "manager", "cashier", "kitchen")
@@ -74,11 +74,14 @@ def serialize_team(db: Session, tenant: Tenant) -> dict:
 
 
 def team_payload(db: Session, user: Staff, tenant: Tenant) -> dict:
-    """One restaurant's roster, plus the picker only an admin needs."""
+    """One restaurant's roster, plus the picker only the platform owner needs."""
     payload = serialize_team(db, tenant)
-    if user.role == "admin":
+    if user.role == "owner":
         payload["restaurants"] = [
-            serialize_restaurant(row) for row in db.query(Tenant).order_by(Tenant.id)
+            serialize_restaurant(row)
+            for row in db.query(Tenant)
+            .filter(Tenant.is_deleted.is_(False))
+            .order_by(Tenant.id)
         ]
     return payload
 
@@ -86,14 +89,14 @@ def team_payload(db: Session, user: Staff, tenant: Tenant) -> dict:
 def resolve_restaurant(
     db: Session, user: Staff, restaurant_id: int | None
 ) -> Tenant:
-    """The restaurant an admin is working on; everyone else stays in their own."""
+    """The restaurant being managed; everyone but the owner stays in their own."""
     own = current_tenant(db)
     if not restaurant_id or restaurant_id == own.id:
         return own
-    if user.role != "admin":
+    if user.role != "owner":
         raise HTTPException(
             status_code=403,
-            detail="Only an admin can manage another restaurant.",
+            detail="Only the platform owner can reach another restaurant.",
         )
     tenant = db.get(Tenant, restaurant_id)
     if tenant is None:
@@ -102,10 +105,10 @@ def resolve_restaurant(
 
 
 def get_staff(db: Session, user: Staff, staff_id: int) -> Staff:
-    """A member of the caller's own restaurant, or of any restaurant for an admin."""
+    """A member of the caller's own restaurant; the owner may reach any."""
     own = current_tenant(db)
     row = db.get(Staff, staff_id)
-    if row is None or (row.tenant_id != own.id and user.role != "admin"):
+    if row is None or (row.tenant_id != own.id and user.role != "owner"):
         raise HTTPException(status_code=404, detail="Team member not found")
     return row
 
@@ -115,6 +118,16 @@ def active_with_role(db: Session, tenant: Tenant, role: str, exclude_id: int = 0
         Staff.tenant_id == tenant.id,
         Staff.role == role,
         Staff.is_active.is_(True),
+    )
+    if exclude_id:
+        query = query.filter(Staff.id != exclude_id)
+    return query.scalar() or 0
+
+
+def active_platform_owners(db: Session, exclude_id: int = 0) -> int:
+    """Platform ownership is shared across restaurants, so it is counted globally."""
+    query = db.query(func.count(Staff.id)).filter(
+        Staff.role == "owner", Staff.is_active.is_(True)
     )
     if exclude_id:
         query = query.filter(Staff.id != exclude_id)
@@ -143,7 +156,7 @@ class StaffPatch(BaseModel):
     password: str | None = Field(default=None, max_length=200)
 
 
-def _new_credentials(db: Session, username: str, password: str):
+def new_credentials(db: Session, username: str, password: str):
     name = username.strip().lower()
     if not USERNAME_PATTERN.match(name):
         raise HTTPException(
@@ -187,13 +200,27 @@ def create_staff(
     username = values.pop("username").strip()
     password = values.pop("password")
 
+    # The platform role sits above every restaurant, so only the owner hands it
+    # out — and an owner without a sign-in would be locked out of their own app.
+    if values["role"] == "owner":
+        if user.role != "owner":
+            raise HTTPException(
+                status_code=403,
+                detail="Only the platform owner can hand out that role.",
+            )
+        if not (username and password):
+            raise HTTPException(
+                status_code=422,
+                detail="An owner account needs a username and a password.",
+            )
+
     if username or password:
         if not (username and password):
             raise HTTPException(
                 status_code=422,
                 detail="A user account needs both a username and a password.",
             )
-        values["username"], values["password_hash"] = _new_credentials(
+        values["username"], values["password_hash"] = new_credentials(
             db, username, password
         )
 
@@ -222,6 +249,11 @@ def update_staff(
     db: Session = Depends(get_db),
 ):
     row = get_staff(db, user, staff_id)
+    # The platform owner's own account is above a restaurant admin's reach.
+    if row.role == "owner" and user.role != "owner":
+        raise HTTPException(
+            status_code=403, detail="Only the platform owner can change that account."
+        )
     # The owner/admin safety net belongs to the store the member works in, which
     # is not necessarily the store the admin signed in to.
     tenant = db.get(Tenant, row.tenant_id)
@@ -243,30 +275,37 @@ def update_staff(
 
     if row.id == user.id and (
         changes.get("is_active") is False
-        or changes.get("role", "admin") != "admin"
+        or changes.get("role", row.role) not in ("admin", "owner")
     ):
         raise HTTPException(
-            status_code=409, detail="You cannot remove your own admin access."
+            status_code=409, detail="You cannot remove your own access."
         )
 
-    # A store must always keep one active owner, otherwise nobody can run it.
+    # Handing out the platform role is the owner's call alone.
+    if changes.get("role") == "owner" and user.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="Only the platform owner can hand out that role.",
+        )
+
+    # A restaurant must always keep one active admin, otherwise nobody there can
+    # open the roster or the store profile.
+    losing_admin = row.role == "admin" and row.is_active and (
+        changes.get("role", row.role) != "admin" or changes.get("is_active") is False
+    )
+    if losing_admin and active_with_role(db, tenant, "admin", row.id) == 0:
+        raise HTTPException(
+            status_code=409, detail="The store needs at least one active admin."
+        )
+
+    # And the platform always keeps one active owner.
     losing_owner = row.role == "owner" and row.is_active and (
         changes.get("role", row.role) != "owner" or changes.get("is_active") is False
     )
-    if losing_owner and active_with_role(db, tenant, "owner", row.id) == 0:
+    if losing_owner and active_platform_owners(db, row.id) == 0:
         raise HTTPException(
-            status_code=409, detail="The store needs at least one active owner."
+            status_code=409, detail="The platform needs at least one active owner."
         )
-
-    # Same rule for the role that hands out accounts.
-    if row.role == "admin" and active_with_role(db, tenant, "admin", row.id) == 0:
-        losing_admin = changes.get("role", row.role) != "admin" or (
-            changes.get("is_active") is False
-        )
-        if losing_admin:
-            raise HTTPException(
-                status_code=409, detail="The store needs at least one active admin."
-            )
 
     for field, value in changes.items():
         setattr(row, field, value)
@@ -298,17 +337,21 @@ def delete_staff(
 ):
     row = get_staff(db, user, staff_id)
     tenant = db.get(Tenant, row.tenant_id)
+    if row.role == "owner" and user.role != "owner":
+        raise HTTPException(
+            status_code=403, detail="Only the platform owner can change that account."
+        )
     if row.id == user.id:
         raise HTTPException(
             status_code=409, detail="You cannot delete your own account."
         )
-    if row.role == "owner" and row.is_active and active_with_role(db, tenant, "owner", row.id) == 0:
-        raise HTTPException(
-            status_code=409, detail="The store needs at least one active owner."
-        )
     if row.role == "admin" and row.is_active and active_with_role(db, tenant, "admin", row.id) == 0:
         raise HTTPException(
             status_code=409, detail="The store needs at least one active admin."
+        )
+    if row.role == "owner" and row.is_active and active_platform_owners(db, row.id) == 0:
+        raise HTTPException(
+            status_code=409, detail="The platform needs at least one active owner."
         )
     audit.log(
         db,
@@ -324,65 +367,3 @@ def delete_staff(
     db.delete(row)
     db.commit()
     return team_payload(db, user, tenant)
-
-
-class RestaurantIn(BaseModel):
-    name_ar: str = Field(min_length=1, max_length=120)
-    name_en: str = Field(min_length=1, max_length=120)
-
-
-@restaurant_router.get("")
-def list_restaurants(
-    user: Staff = Depends(auth.require_admin), db: Session = Depends(get_db)
-):
-    return {
-        "restaurants": [
-            serialize_restaurant(row) for row in db.query(Tenant).order_by(Tenant.id)
-        ]
-    }
-
-
-@restaurant_router.post("", status_code=201)
-def create_restaurant(
-    payload: RestaurantIn,
-    user: Staff = Depends(auth.require_admin),
-    db: Session = Depends(get_db),
-):
-    name_ar = payload.name_ar.strip()
-    name_en = payload.name_en.strip()
-    if not (name_ar and name_en):
-        raise HTTPException(
-            status_code=422,
-            detail="A restaurant needs a name in both languages.",
-        )
-    taken = (
-        db.query(Tenant)
-        .filter(func.lower(Tenant.name_en) == name_en.lower())
-        .first()
-    )
-    if taken is not None:
-        raise HTTPException(
-            status_code=409, detail="A restaurant with that name already exists."
-        )
-
-    # A new restaurant starts empty, but it rings up money the same way the
-    # admin's own store does, so the till never charges an unset tax rate.
-    home = current_tenant(db)
-    row = Tenant(
-        name_ar=name_ar,
-        name_en=name_en,
-        currency=home.currency,
-        tax_rate=home.tax_rate,
-        default_language=home.default_language,
-    )
-    db.add(row)
-    db.flush()
-    audit.log(db, row.id, "restaurant.create", "tenant", row.id, row.name_en, actor=user.name)
-    db.commit()
-    return {
-        "restaurants": [
-            serialize_restaurant(other)
-            for other in db.query(Tenant).order_by(Tenant.id)
-        ],
-        "created": serialize_restaurant(row),
-    }

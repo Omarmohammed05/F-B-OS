@@ -35,6 +35,11 @@ ADDITIVE_COLUMNS = [
     ("staff", "username", "VARCHAR(60) NOT NULL DEFAULT ''"),
     ("staff", "password_hash", "VARCHAR(200) NOT NULL DEFAULT ''"),
     ("staff", "onboarded_at", "TIMESTAMP NULL"),
+    # Platform ownership: what the owner charges a restaurant, and the two
+    # switches that cut a restaurant off or archive it.
+    ("tenants", "software_price", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
+    ("tenants", "is_blocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("tenants", "is_deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 ADDITIVE_INDEXES = [
@@ -67,6 +72,20 @@ BACKFILLS = [
     " WHERE qr_token = ''",
 ]
 
+# The roles were redefined when the platform owner arrived: `admin` used to be
+# the platform-level role and `owner` ran a single store. Now `owner` runs the
+# platform and `admin` runs one restaurant, so the two swap. The first statement
+# only fires while no account holds the platform role (an owner always has a
+# sign-in), so a second boot never undoes the swap.
+ROLE_MIGRATION = [
+    "UPDATE staff SET role = 'admin' WHERE role = 'owner'"
+    " AND NOT EXISTS"
+    " (SELECT 1 FROM staff s WHERE s.role = 'owner' AND s.username <> '')",
+    "UPDATE staff SET role = 'owner' WHERE id = ("
+    " SELECT MIN(id) FROM staff WHERE role = 'admin' AND username <> '')"
+    " AND NOT EXISTS (SELECT 1 FROM staff WHERE role = 'owner')",
+]
+
 
 def ensure_columns() -> None:
     """Idempotent, additive-only schema step. Safe to run on every boot."""
@@ -86,6 +105,9 @@ def ensure_columns() -> None:
                 conn.execute(text(statement))
         if "orders" in tables and "branches" in tables:
             conn.execute(text(BRANCH_BACKFILL))
+        if "staff" in tables:
+            for statement in ROLE_MIGRATION:
+                conn.execute(text(statement))
 
 
 def get_db():

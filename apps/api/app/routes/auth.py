@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .. import auth
 from ..db import get_db
-from ..models import Staff
+from ..models import Staff, Tenant
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -59,6 +59,12 @@ def login(
     staff = matches[0]
     if not staff.is_active:
         raise HTTPException(status_code=403, detail="This account is switched off.")
+    # A restaurant the owner blocked or archived keeps its rows but nobody in
+    # it can sign in, whatever their own account says.
+    if auth.restaurant_closed(db.get(Tenant, staff.tenant_id)):
+        raise HTTPException(
+            status_code=403, detail="This restaurant's access is suspended."
+        )
 
     token = auth.open_session(db, staff)
     response.set_cookie(

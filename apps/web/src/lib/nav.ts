@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Boxes,
+  Building2,
   LayoutDashboard,
   Monitor,
   ReceiptText,
@@ -9,6 +10,7 @@ import {
   UserCog,
   Users,
   UtensilsCrossed,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import type { TranslationKey } from './i18n';
@@ -18,14 +20,25 @@ export type NavItem = {
   labelKey: TranslationKey;
   icon: LucideIcon;
   end?: boolean;
+  /** Only the platform owner sees this entry (restaurants, income). */
+  ownerOnly?: boolean;
 };
 
 export type NavGroup = {
   labelKey: TranslationKey;
   items: NavItem[];
+  ownerOnly?: boolean;
 };
 
 export const NAV_GROUPS: NavGroup[] = [
+  {
+    labelKey: 'nav.group.platform',
+    ownerOnly: true,
+    items: [
+      { to: '/restaurants', labelKey: 'nav.restaurants', icon: Building2 },
+      { to: '/income', labelKey: 'nav.income', icon: Wallet },
+    ],
+  },
   {
     labelKey: 'nav.group.main',
     items: [

@@ -175,15 +175,15 @@ LOYALTY_CARDS = [
 ]
 
 STAFF = [
-    ("Hassan Mahmoud", "0100 555 7788", "owner", True),
+    ("Hassan Mahmoud", "0100 555 7788", "admin", True),
     ("Dina Farouk", "0111 222 3344", "manager", True),
     ("Youssef Adel", "0122 333 4455", "cashier", True),
     ("Karim Nabil", "0109 888 7766", "kitchen", True),
     ("Mariam Saleh", "0128 444 9900", "cashier", False),
 ]
 
-# The one sign-in a fresh store ships with (see AGENTS.md). Real users are
-# created from the Team page by this admin.
+# The one sign-in a fresh platform ships with (see AGENTS.md). It is the
+# platform owner: it opens restaurants, bills them and hands out their admins.
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "sufra1234"
 
@@ -456,8 +456,8 @@ def seed() -> None:
                     )
                 )
 
-        # One admin sign-in, so a fresh store and an existing one both have a
-        # way in. It is the documented demo account (AGENTS.md); an admin can
+        # One owner sign-in, so a fresh platform and an existing one both have a
+        # way in. It is the documented demo account (AGENTS.md); the owner can
         # add real users and reset this password from the Team page.
         if (
             db.query(Staff)
@@ -468,9 +468,9 @@ def seed() -> None:
             db.add(
                 Staff(
                     tenant_id=tenant.id,
-                    name="Sufra Admin",
+                    name="Sufra Owner",
                     phone="",
-                    role="admin",
+                    role="owner",
                     is_active=True,
                     username=ADMIN_USERNAME,
                     password_hash=hash_password(ADMIN_PASSWORD),

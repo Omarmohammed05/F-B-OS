@@ -21,7 +21,7 @@ from starlette.responses import JSONResponse
 
 from .db import SessionLocal, get_db
 from .deps import set_request_tenant
-from .models import AuthSession, Staff
+from .models import AuthSession, Staff, Tenant
 
 COOKIE_NAME = "sufra_session"
 SESSION_DAYS = 7
@@ -30,6 +30,15 @@ _ITERATIONS = 240_000
 # Reachable without a session: the liveness probe and the two endpoints that
 # create or clear one.
 PUBLIC_PATHS = ("/api/health", "/api/auth/login", "/api/auth/logout")
+
+# Who may manage accounts, the store profile and the menu of people's access:
+# a restaurant's own admin, and the platform owner above them.
+ADMIN_ROLES = ("admin", "owner")
+
+
+def restaurant_closed(tenant) -> bool:
+    """A restaurant the owner blocked, or removed while keeping its history."""
+    return tenant is None or tenant.is_blocked or tenant.is_deleted
 
 
 # ------------------------------------------------------------------ passwords
@@ -142,12 +151,19 @@ class SessionGate(BaseHTTPMiddleware):
         db = SessionLocal()
         try:
             staff = session_staff(db, token)
+            closed = staff is not None and restaurant_closed(
+                db.get(Tenant, staff.tenant_id)
+            )
         finally:
             db.close()
 
         if staff is None:
             return JSONResponse(
                 {"detail": "Sign in to continue."}, status_code=401
+            )
+        if closed:
+            return JSONResponse(
+                {"detail": "This restaurant's access is suspended."}, status_code=403
             )
 
         # The dependency below re-reads the row on the request's own session.
@@ -172,10 +188,24 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> Staff:
 
 
 def require_admin(user: Staff = Depends(current_user)) -> Staff:
-    """Accounts are created by admins only — that role exists for this."""
-    if user.role != "admin":
+    """A restaurant's admin — or the platform owner, who outranks them.
+
+    Staff roles (manager, cashier, kitchen) are operational only: they ring up
+    tickets and never touch accounts or the store profile.
+    """
+    if user.role not in ADMIN_ROLES:
         raise HTTPException(
             status_code=403,
-            detail="Only an admin can manage user accounts.",
+            detail="Only an admin can manage accounts and the store profile.",
+        )
+    return user
+
+
+def require_owner(user: Staff = Depends(current_user)) -> Staff:
+    """Restaurants themselves belong to the platform owner alone."""
+    if user.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="Only the platform owner can manage restaurants.",
         )
     return user

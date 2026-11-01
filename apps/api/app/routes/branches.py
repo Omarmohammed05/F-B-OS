@@ -6,16 +6,15 @@ The menu, stock and the guest book stay store-wide on purpose — one kitchen, o
 guest per person, however many doors the store has.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, auth
 from ..db import get_db
 from ..deps import active_branch, current_tenant
-from ..models import Branch, Tenant
-from ..security import client_host
+from ..models import Branch, Staff, Tenant
 
 router = APIRouter(prefix="/api/branches", tags=["branches"])
 
@@ -72,7 +71,10 @@ def list_branches(db: Session = Depends(get_db)):
 
 @router.post("", status_code=201)
 def create_branch(
-    payload: BranchIn, request: Request, db: Session = Depends(get_db)
+    payload: BranchIn,
+    # Locations are restaurant information: staff add no doors of their own.
+    user: Staff = Depends(auth.require_admin),
+    db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     name_ar = payload.name_ar.strip()
@@ -112,7 +114,7 @@ def create_branch(
         "branch",
         branch.id,
         name_en,
-        actor=client_host(request),
+        actor=user.name,
     )
     # The store's very first branch is where its existing tickets already are.
     if not tenant.active_branch_id:
@@ -124,7 +126,9 @@ def create_branch(
 
 @router.post("/{branch_id}/activate")
 def activate_branch(
-    branch_id: int, request: Request, db: Session = Depends(get_db)
+    branch_id: int,
+    user: Staff = Depends(auth.require_admin),
+    db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     # Resolved under the tenant, so a branch id from another store is a 404.
@@ -137,7 +141,7 @@ def activate_branch(
         "branch",
         branch.id,
         branch.name_en,
-        actor=client_host(request),
+        actor=user.name,
     )
     db.commit()
     return branches_payload(db, tenant)
