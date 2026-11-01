@@ -4,6 +4,7 @@ import RequireAuth from './components/RequireAuth';
 import { AuthProvider } from './lib/auth';
 import { AppDataProvider } from './lib/store';
 import OwnerOnly from './components/OwnerOnly';
+import ActivatePage from './pages/ActivatePage';
 import AttendancePage from './pages/AttendancePage';
 import ChecklistPage from './pages/ChecklistPage';
 import CustomersPage from './pages/CustomersPage';
@@ -29,6 +30,8 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="login" element={<LoginPage />} />
+        {/* A restaurant's activation link: no session yet, that is the point. */}
+        <Route path="activate/:token" element={<ActivatePage />} />
 
         <Route element={<RequireAuth />}>
           <Route path="onboarding" element={<OnboardingPage />} />

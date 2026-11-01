@@ -27,9 +27,11 @@ COOKIE_NAME = "sufra_session"
 SESSION_DAYS = 7
 _ITERATIONS = 240_000
 
-# Reachable without a session: the liveness probe and the two endpoints that
-# create or clear one.
+# Reachable without a session: the liveness probe, the two endpoints that create
+# or clear one, and the activation link a new restaurant's admin opens before
+# they have an account.
 PUBLIC_PATHS = ("/api/health", "/api/auth/login", "/api/auth/logout")
+PUBLIC_PREFIXES = ("/api/invites/",)
 
 # Who may manage accounts, the store profile and the menu of people's access:
 # a restaurant's own admin, and the platform owner above them.
@@ -143,6 +145,7 @@ class SessionGate(BaseHTTPMiddleware):
         if (
             not path.startswith("/api")
             or path in PUBLIC_PATHS
+            or path.startswith(PUBLIC_PREFIXES)
             or request.method == "OPTIONS"
         ):
             return await call_next(request)

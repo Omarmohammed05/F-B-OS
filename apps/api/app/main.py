@@ -19,6 +19,7 @@ from .routes import branches as branch_routes
 from .routes import checklists as checklist_routes
 from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
+from .routes import invites as invite_routes
 from .routes import loyalty as loyalty_routes
 from .routes import menu as menu_routes
 from .routes import notifications as notification_routes
@@ -78,6 +79,7 @@ app.include_router(loyalty_routes.router)
 app.include_router(report_routes.router)
 app.include_router(team_routes.router)
 app.include_router(platform_routes.router)
+app.include_router(invite_routes.router)
 app.include_router(setting_routes.router)
 app.include_router(audit_routes.router)
 app.include_router(notification_routes.router)

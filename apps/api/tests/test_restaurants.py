@@ -48,6 +48,10 @@ def drop_restaurant(db, staff_id: int, tenant_id: int) -> None:
             {"id": tenant_id},
         )
         db.execute(
+            text("DELETE FROM restaurant_invites WHERE tenant_id = :id"),
+            {"id": tenant_id},
+        )
+        db.execute(
             text("DELETE FROM audit_logs WHERE tenant_id = :id"), {"id": tenant_id}
         )
         # Every restaurant action is logged against the restaurant itself, even

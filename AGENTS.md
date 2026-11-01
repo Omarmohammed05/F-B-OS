@@ -740,6 +740,26 @@ service.
   — every page already renders that state — and copies `currency`, `tax_rate` and
   `default_language` from the owner's own store so the till charges tax correctly
   from the first ticket.
+- **Handover is a link, never a password typed for somebody else.** Creating a
+  restaurant without the optional `admin_*` fields mints a `restaurant_invites`
+  row and answers with it as `invite_token` on that restaurant (plus `created_id`,
+  so the dialog knows which row it just made).
+  `POST /api/restaurants/{id}/invite` mints a fresh link — it deletes the previous
+  unused one, so exactly one works — and answers **409** once the restaurant has an
+  admin. `GET /api/invites/{token}` (public) reports the restaurant, `is_used` and
+  `is_blocked`; `POST /api/invites/{token}` creates the admin through
+  `team.new_credentials` (same rules, unique across the platform), closes the link,
+  writes a `restaurant.activate` audit row and signs the holder in. Both are public
+  because the holder has no account yet: `auth.PUBLIC_PREFIXES` lets
+  `/api/invites/` through the gate and `security.RULES` budgets the POST like a
+  sign-in (10/min). The page is `pages/ActivatePage.tsx` (`/activate/:token`,
+  rendered outside the shell); the owner copies the link from
+  `components/platform/InviteLinkDialog.tsx`.
+- The owner's own row (`owner_tenant_id`) hides the invite button and disables
+  block and remove — the API answers **409** on both. Those dialogs used to print
+  "that restaurant could not be removed" for it because `String(new Error(...))`
+  starts with `Error: `, never with the status: read `err.message`. Fixed in
+  `RestaurantDialog` and `DeleteRestaurantDialog` (no other caller has that bug).
 - Software money is kept apart from ticket money: `tenants.software_price` is the
   monthly bill and `software_payments` rows are what was actually collected
   (`POST /api/restaurants/{id}/payments` `{amount, paid_on?, note?}`,

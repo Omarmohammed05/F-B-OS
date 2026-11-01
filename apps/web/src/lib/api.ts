@@ -363,6 +363,8 @@ export type PlatformRestaurant = {
   is_blocked: boolean;
   is_deleted: boolean;
   admin: RestaurantAdmin | null;
+  /** The live activation link's token, empty once the restaurant is taken over. */
+  invite_token: string;
   staff_count: number;
   sales_month: number;
   income_month: number;
@@ -383,6 +385,21 @@ export type RestaurantsData = {
   currency: string;
   month: string;
   owner_tenant_id: number;
+  /** Set by a create, so the page can show that restaurant's activation link. */
+  created_id?: number;
+};
+
+export type InviteInfo = {
+  restaurant_ar: string;
+  restaurant_en: string;
+  is_used: boolean;
+  is_blocked: boolean;
+};
+
+export type InviteAcceptInput = {
+  name: string;
+  username: string;
+  password: string;
 };
 
 export type RestaurantCreateInput = {
@@ -868,6 +885,17 @@ export const api = {
     request<RestaurantsData>(`/api/restaurants/${id}/block`, {
       method: 'POST',
       body: JSON.stringify({ blocked }),
+    }),
+  newRestaurantInvite: (id: number) =>
+    request<RestaurantsData>(`/api/restaurants/${id}/invite`, {
+      method: 'POST',
+    }),
+  inviteInfo: (token: string) =>
+    request<InviteInfo>(`/api/invites/${token}`),
+  acceptInvite: (token: string, body: InviteAcceptInput) =>
+    request<AuthUser>(`/api/invites/${token}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
   deleteRestaurant: (id: number, keepData: boolean) =>
     request<RestaurantsData>(

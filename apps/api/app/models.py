@@ -254,6 +254,25 @@ class SoftwarePayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class RestaurantInvite(Base):
+    """A one-time activation link for a restaurant's first admin.
+
+    The platform owner opens the restaurant and hands the link to whoever runs
+    it; the holder sets their own name, username and password there, and that
+    account becomes the restaurant's admin. `used_at` is what closes the link,
+    so a forwarded link stops working after the store has been taken over.
+    """
+
+    __tablename__ = "restaurant_invites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_by: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class AuthSession(Base):
     """One signed-in browser. Only the token's fingerprint is stored."""
 

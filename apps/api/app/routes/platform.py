@@ -18,7 +18,15 @@ from sqlalchemy.orm import Session
 from .. import audit, auth
 from ..db import Base, get_db
 from ..deps import current_tenant
-from ..models import AuthSession, Order, SoftwarePayment, Staff, Tenant
+from ..models import (
+    AuthSession,
+    Order,
+    RestaurantInvite,
+    SoftwarePayment,
+    Staff,
+    Tenant,
+)
+from ..security import new_token
 from .team import MIN_PASSWORD, USERNAME_PATTERN, new_credentials
 
 router = APIRouter(prefix="/api", tags=["platform"])
@@ -47,6 +55,29 @@ def admin_of(db: Session, tenant_id: int) -> Staff | None:
         .order_by(Staff.id)
         .first()
     )
+
+
+def latest_invite(db: Session, tenant_id: int) -> RestaurantInvite | None:
+    return (
+        db.query(RestaurantInvite)
+        .filter(RestaurantInvite.tenant_id == tenant_id)
+        .order_by(RestaurantInvite.id.desc())
+        .first()
+    )
+
+
+def mint_invite(db: Session, tenant: Tenant, actor: str) -> RestaurantInvite:
+    """A fresh activation link, and the only live one for that restaurant."""
+    db.query(RestaurantInvite).filter(
+        RestaurantInvite.tenant_id == tenant.id,
+        RestaurantInvite.used_at.is_(None),
+    ).delete(synchronize_session=False)
+    row = RestaurantInvite(
+        tenant_id=tenant.id, token=new_token(), created_by=actor
+    )
+    db.add(row)
+    db.flush()
+    return row
 
 
 def serialize_admin(row: Staff | None) -> dict | None:
@@ -81,6 +112,9 @@ def serialize_restaurant(db: Session, tenant: Tenant, month: date) -> dict:
         .scalar()
         or 0.0
     )
+    # A restaurant without an admin is one waiting for its holder to activate.
+    # The live token is what the owner copies and sends.
+    invite = latest_invite(db, tenant.id)
     return {
         "id": tenant.id,
         "name_ar": tenant.name_ar,
@@ -90,6 +124,7 @@ def serialize_restaurant(db: Session, tenant: Tenant, month: date) -> dict:
         "is_blocked": tenant.is_blocked,
         "is_deleted": tenant.is_deleted,
         "admin": serialize_admin(admin_of(db, tenant.id)),
+        "invite_token": invite.token if invite and invite.used_at is None else "",
         "staff_count": db.query(func.count(Staff.id))
         .filter(Staff.tenant_id == tenant.id)
         .scalar()
@@ -292,6 +327,10 @@ def create_restaurant(
                 password_hash=password_hash,
             )
         )
+    else:
+        # No account was made here, so the restaurant is handed over through an
+        # activation link instead: its holder sets their own password.
+        mint_invite(db, row, user.name)
     audit.log(
         db,
         row.id,
@@ -299,11 +338,15 @@ def create_restaurant(
         "tenant",
         row.id,
         f"{row.name_en} at {row.software_price:g}"
-        + (f", admin {username.lower()}" if username else ""),
+        + (f", admin {username.lower()}" if username else ", activation link"),
         actor=user.name,
     )
     db.commit()
-    return restaurants_payload(db, user)
+    payload = restaurants_payload(db, user)
+    # The web answers "create" by showing that new restaurant's link, so say
+    # which row it is instead of guessing from the name.
+    payload["created_id"] = row.id
+    return payload
 
 
 @router.patch("/restaurants/{restaurant_id}")
@@ -365,6 +408,33 @@ def block_restaurant(
         "tenant",
         row.id,
         row.name_en,
+        actor=user.name,
+    )
+    db.commit()
+    return restaurants_payload(db, user)
+
+
+@router.post("/restaurants/{restaurant_id}/invite")
+def invite_restaurant(
+    restaurant_id: int,
+    user: Staff = Depends(auth.require_owner),
+    db: Session = Depends(get_db),
+):
+    """A fresh activation link for a restaurant that has no admin yet."""
+    row = get_restaurant(db, restaurant_id)
+    if admin_of(db, row.id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="This restaurant already has an admin.",
+        )
+    mint_invite(db, row, user.name)
+    audit.log(
+        db,
+        row.id,
+        "restaurant.invite",
+        "tenant",
+        row.id,
+        f"activation link for {row.name_en}",
         actor=user.name,
     )
     db.commit()

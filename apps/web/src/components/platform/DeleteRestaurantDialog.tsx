@@ -45,8 +45,11 @@ export default function DeleteRestaurantDialog({
       onDone(await api.deleteRestaurant(restaurant.id, keepData));
       onClose();
     } catch (err) {
+      // `String(new Error(...))` carries an "Error: " prefix, so the status has
+      // to be read from the message itself — that is what the API sends.
+      const message = err instanceof Error ? err.message : String(err);
       setError(
-        String(err).startsWith('409')
+        message.startsWith('409')
           ? t('platform.deleteBlocked')
           : t('platform.deleteFailed'),
       );

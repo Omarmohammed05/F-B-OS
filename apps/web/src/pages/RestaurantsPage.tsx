@@ -1,6 +1,7 @@
-import { Ban, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { Ban, Link2, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import DeleteRestaurantDialog from '../components/platform/DeleteRestaurantDialog';
+import InviteLinkDialog from '../components/platform/InviteLinkDialog';
 import RestaurantDialog from '../components/platform/RestaurantDialog';
 import { api, type PlatformRestaurant, type RestaurantsData } from '../lib/api';
 import { formatCurrency, formatMonth, formatNumber } from '../lib/format';
@@ -51,6 +52,9 @@ export default function RestaurantsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PlatformRestaurant | null>(null);
   const [deleting, setDeleting] = useState<PlatformRestaurant | null>(null);
+  const [invite, setInvite] = useState<{ name: string; token: string } | null>(
+    null,
+  );
   const [busyId, setBusyId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -78,6 +82,38 @@ export default function RestaurantsPage() {
 
   const nameOf = (row: PlatformRestaurant) =>
     lang === 'ar' ? row.name_ar : row.name_en;
+
+  /** A create answers with the new row, so its activation link opens at once. */
+  const applySaved = (next: RestaurantsData) => {
+    setData(next);
+    const created = next.created_id
+      ? next.restaurants.find((row) => row.id === next.created_id)
+      : undefined;
+    if (created?.invite_token) {
+      setInvite({ name: nameOf(created), token: created.invite_token });
+    }
+  };
+
+  const openInvite = (row: PlatformRestaurant) => {
+    if (row.invite_token) {
+      setInvite({ name: nameOf(row), token: row.invite_token });
+      return;
+    }
+    setBusyId(row.id);
+    api
+      .newRestaurantInvite(row.id)
+      .then((next) => {
+        setData(next);
+        const fresh = next.restaurants.find((item) => item.id === row.id);
+        if (fresh?.invite_token) {
+          setInvite({ name: nameOf(row), token: fresh.invite_token });
+        } else {
+          setError(true);
+        }
+      })
+      .catch(() => setError(true))
+      .finally(() => setBusyId(null));
+  };
 
   const toggleBlock = (row: PlatformRestaurant) => {
     setBusyId(row.id);
@@ -193,7 +229,9 @@ export default function RestaurantsPage() {
                     <p className="text-[12px] text-ink-2" dir="ltr">
                       {row.admin
                         ? `@${row.admin.username}`
-                        : t('platform.noAdmin')}
+                        : row.id === data.owner_tenant_id
+                          ? t('platform.ownRestaurant')
+                          : t('platform.invitePending')}
                     </p>
                   </td>
                   <td className="px-4 py-3">
@@ -212,6 +250,19 @@ export default function RestaurantsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      {row.admin || row.id === data.owner_tenant_id ? null : (
+                        <button
+                          type="button"
+                          onClick={() => openInvite(row)}
+                          disabled={busyId === row.id}
+                          aria-label={`${t('platform.inviteOpen')} — ${nameOf(row)}`}
+                          title={t('platform.inviteOpen')}
+                          className="icon-btn h-9 w-9 disabled:opacity-40"
+                          style={{ color: 'var(--accent)' }}
+                        >
+                          <Link2 size={15} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => openEdit(row)}
@@ -224,7 +275,15 @@ export default function RestaurantsPage() {
                         <button
                           type="button"
                           onClick={() => toggleBlock(row)}
-                          disabled={busyId === row.id}
+                          disabled={
+                            busyId === row.id ||
+                            row.id === data.owner_tenant_id
+                          }
+                          title={
+                            row.id === data.owner_tenant_id
+                              ? t('platform.ownRestaurantHint')
+                              : undefined
+                          }
                           aria-label={`${
                             row.is_blocked
                               ? t('platform.unblock')
@@ -247,8 +306,14 @@ export default function RestaurantsPage() {
                       <button
                         type="button"
                         onClick={() => setDeleting(row)}
+                        disabled={row.id === data.owner_tenant_id}
                         aria-label={`${t('platform.delete')} — ${nameOf(row)}`}
-                        className="icon-btn h-9 w-9 text-[color:var(--danger)]"
+                        title={
+                          row.id === data.owner_tenant_id
+                            ? t('platform.ownRestaurantHint')
+                            : undefined
+                        }
+                        className="icon-btn h-9 w-9 text-[color:var(--danger)] disabled:opacity-40"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -271,7 +336,7 @@ export default function RestaurantsPage() {
         open={dialogOpen}
         restaurant={editing}
         onClose={() => setDialogOpen(false)}
-        onSaved={setData}
+        onSaved={applySaved}
       />
 
       <DeleteRestaurantDialog
@@ -279,6 +344,13 @@ export default function RestaurantsPage() {
         restaurant={deleting}
         onClose={() => setDeleting(null)}
         onDone={setData}
+      />
+
+      <InviteLinkDialog
+        open={invite !== null}
+        restaurant={invite?.name ?? ''}
+        token={invite?.token ?? ''}
+        onClose={() => setInvite(null)}
       />
     </div>
   );

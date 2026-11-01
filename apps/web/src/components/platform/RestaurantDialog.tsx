@@ -1,4 +1,3 @@
-import { KeyRound } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   api,
@@ -18,8 +17,8 @@ type Props = {
 
 /**
  * Opens a restaurant, or edits the two things the owner owns about it: its
- * names and what the software costs it. The first admin is created here too, so
- * a new restaurant can be handed over in one step.
+ * names and what the software costs it. A new restaurant is handed over with an
+ * activation link (see `InviteLinkDialog`), never a password typed for someone.
  */
 export default function RestaurantDialog({
   open,
@@ -32,9 +31,6 @@ export default function RestaurantDialog({
   const [nameAr, setNameAr] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [price, setPrice] = useState('0');
-  const [adminName, setAdminName] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,9 +39,6 @@ export default function RestaurantDialog({
     setNameAr(restaurant?.name_ar ?? '');
     setNameEn(restaurant?.name_en ?? '');
     setPrice(String(restaurant?.software_price ?? 0));
-    setAdminName('');
-    setUsername('');
-    setPassword('');
     setSaving(false);
     setError(null);
   }, [open, restaurant]);
@@ -63,17 +56,6 @@ export default function RestaurantDialog({
       setError(t('platform.priceInvalid'));
       return;
     }
-    if (!editing && (username.trim() || password)) {
-      if (!username.trim() || !password) {
-        setError(t('team.credentials'));
-        return;
-      }
-      if (password.length < 8) {
-        setError(t('team.passwordShort'));
-        return;
-      }
-    }
-
     setSaving(true);
     setError(null);
     try {
@@ -87,14 +69,11 @@ export default function RestaurantDialog({
             name_ar: ar,
             name_en: en,
             software_price: amount,
-            admin_name: adminName.trim(),
-            admin_username: username.trim(),
-            admin_password: password,
           });
       onSaved(data);
       onClose();
     } catch (err) {
-      const message = String(err);
+      const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('409')) setError(t('team.restaurantConflict'));
       else if (message.startsWith('422')) setError(t('team.credentials'));
       else setError(t('team.restaurantFailed'));
@@ -186,69 +165,9 @@ export default function RestaurantDialog({
           </span>
         </label>
 
-        {editing ? (
-          <p className="rounded-field border border-line bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-ink-2">
-            {t('platform.adminHintEdit')}
-          </p>
-        ) : (
-          <div className="rounded-field border border-line bg-surface-2 p-3">
-            <p className="flex items-center gap-2 text-[13px] font-semibold text-ink">
-              <KeyRound size={14} className="text-ink-2" />
-              {t('platform.firstAdmin')}
-            </p>
-            <p className="mt-1 text-[12px] leading-relaxed text-ink-2">
-              {t('platform.firstAdminHint')}
-            </p>
-            <div className="mt-3 flex flex-col gap-3">
-              <label className="block">
-                <span className="mb-1 block text-[13px] font-medium text-ink-2">
-                  {t('team.name')}
-                </span>
-                <input
-                  className="field"
-                  value={adminName}
-                  onChange={(event) => setAdminName(event.target.value)}
-                  maxLength={120}
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-[13px] font-medium text-ink-2">
-                    {t('team.username')}
-                  </span>
-                  <input
-                    className="field"
-                    dir="ltr"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={username}
-                    onChange={(event) => {
-                      setUsername(event.target.value);
-                      setError(null);
-                    }}
-                    placeholder="admin.bistro"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-[13px] font-medium text-ink-2">
-                    {t('team.password')}
-                  </span>
-                  <input
-                    className="field"
-                    dir="ltr"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(event) => {
-                      setPassword(event.target.value);
-                      setError(null);
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-        )}
+        <p className="rounded-field border border-line bg-surface-2 px-3 py-2 text-[12px] leading-relaxed text-ink-2">
+          {editing ? t('platform.adminHintEdit') : t('platform.adminByInvite')}
+        </p>
 
         {error ? (
           <p
