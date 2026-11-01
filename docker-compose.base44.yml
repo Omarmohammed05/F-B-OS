@@ -1,0 +1,122 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fbos
+      POSTGRES_PASSWORD: fbos_dev_password
+      POSTGRES_DB: fbos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fbos -d fbos"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: on-failure
+    labels:
+      base44.project: "Sufra OS"
+      base44.kind: infra
+
+  migrate:
+    build: ./apps/api
+    working_dir: /app
+    command: ["python", "-m", "app.seed"]
+    volumes:
+      - ./apps/api:/app
+    environment:
+      # Development only: the demo store and the dev owner password. A
+      # production database is seeded without these (see README, "Deploy").
+      SEED_DEMO_DATA: "1"
+      SUFRA_OWNER_USERNAME: admin
+      SUFRA_OWNER_PASSWORD: sufra1234
+      DATABASE_URL: postgresql+psycopg2://fbos:fbos_dev_password@db:5432/fbos
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: ./apps/api
+    working_dir: /app
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./apps/api:/app
+    ports:
+      - "8000:8000"
+    environment:
+      # Same development pair as `migrate`: the test client in
+      # apps/api/tests/conftest.py signs in with it.
+      SEED_DEMO_DATA: "1"
+      SUFRA_OWNER_USERNAME: admin
+      SUFRA_OWNER_PASSWORD: sufra1234
+      DATABASE_URL: postgresql+psycopg2://fbos:fbos_dev_password@db:5432/fbos
+      BASE44_PREVIEW_MODE:
+      BASE44_PUBLIC_HOST_SUFFIX:
+      BASE44_SANDBOX_HOST_DOMAIN:
+    # Google Wallet issuer id + service account key. Last, so the user's real
+    # values always win over anything above.
+    env_file:
+      - /run/base44/app.env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: on-failure
+    labels:
+      base44.project: "Sufra OS"
+      base44.kind: api
+      base44.port: "8000"
+      base44.docs: /docs
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    command:
+      [
+        "sh",
+        "-ec",
+        "npm ci --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0 --port 5173",
+      ]
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+    ports:
+      - "3000:5173"
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8000
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS:
+      BASE44_PREVIEW_MODE:
+      BASE44_PUBLIC_HOST_SUFFIX:
+      BASE44_SANDBOX_HOST_DOMAIN:
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    restart: on-failure
+    labels:
+      base44.project: "Sufra OS"
+      base44.kind: web
+      base44.port: "3000"
+
+volumes:
+  pgdata:
+  web_node_modules:

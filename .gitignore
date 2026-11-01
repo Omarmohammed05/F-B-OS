@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+.env
+.env.*
+!.env.base44-defaults
+
+.DS_Store
+*.log
