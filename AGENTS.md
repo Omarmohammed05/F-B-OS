@@ -284,10 +284,14 @@ service.
   not approved` and the guest's Google screen shows only "Something went wrong",
   so `ensure_class` submits the class (`reviewStatus` → `UNDER_REVIEW`) right after
   creating it and Google approves a test-mode issuer immediately (`approved`).
-  Google accepts class edits only while it is `draft`/`under_review`, which is why
-  the design is written before the submission and an approved class is only read
-  afterwards — restyling it again needs the Wallet console. Diagnose with a direct
-  `POST /loyaltyObject` against the API: its body carries Google's real reason.
+  Google also refuses a design `PATCH` on an approved class: it answers `Invalid
+  review status "APPROVED". Use "UNDER_REVIEW" instead.`, so a PATCH always carries
+  `reviewStatus: UNDER_REVIEW` and the class goes through review again (instantly
+  for a test-mode issuer). `ensure_class` therefore compares the current class with
+  the design it wants (`_design_is_current`) and only re-submits when a field —
+  colours, names, logo, hero image, image modules — actually changed; a matching
+  class settles into the single read. Diagnose with a direct `POST
+  /loyaltyObject` against the API: its body carries Google's real reason.
 - `push_wallet` mirrors stamps/redemption/points onto an already-saved pass; it is
   best effort and swallows every `WalletError`, so a Google outage never fails a
   stamp at the counter. A 404 from `PATCH` just means the guest never saved it.
@@ -312,6 +316,15 @@ service.
   `#14110C` on transparent, 660×660, generated once with Pillow).
 - Pass styling is premium gold: `GOLD` (`#A8842F`) is the class field and the dark
   badge sits on it; the object modules are Arabic (`نقاط`, `الأختام`, `المكافأة`).
+- Pattern art is two more public images, generated once with a throwaway pure-Python
+  (stdlib `zlib` + a tiny PNG writer) script — no Pillow in the image:
+  `apps/web/public/sufra-wallet-hero.png` (1032×336
+  espresso band of khatim stars, rings and a halftone field, Google's recommended
+  hero size) rides on the class as `heroImage`, and
+  `sufra-wallet-pattern.png` (660×660 ornament tile) as the single
+  `imageModulesData` entry shown in the pass details. Both URLs come from
+  `_asset_url`, so they follow `BASE44_PUBLIC_HOST_SUFFIX` and never need a hardcoded
+  host.
   `components/loyalty/WalletCard.tsx` mirrors that palette so the in-app card and
   the Google pass match. Arabic labels are never letter-spaced — tracking breaks
   the joined script — so the small label style switches on `lang`.

@@ -31,6 +31,10 @@ SAVE_ROOT = "https://pay.google.com/gp/v/save/"
 
 CLASS_SUFFIX = "sufra_loyalty"
 LOGO_PATH = "sufra-wallet-badge.png"
+# Pattern art for the pass face (a 1032x336 band) and the details view (a square
+# ornament tile), served from the web app's public folder.
+HERO_PATH = "sufra-wallet-hero.png"
+PATTERN_PATH = "sufra-wallet-pattern.png"
 
 # Premium gold field for the pass header; the ornament badge and the Arabic
 # modules sit on it.
@@ -79,14 +83,16 @@ def _service_account() -> dict | None:
     return info
 
 
+def _asset_url(name: str) -> str:
+    # Google fetches pass images itself, so they need a public URL. In the sandbox
+    # the only public origin is the preview host that serves the web app's /public.
+    suffix = os.environ.get("BASE44_PUBLIC_HOST_SUFFIX", "").strip()
+    return f"https://3000-{suffix}/{name}" if suffix else ""
+
+
 def _logo_url() -> str:
     explicit = os.environ.get("GOOGLE_WALLET_LOGO_URL", "").strip()
-    if explicit:
-        return explicit
-    # Google fetches the logo itself, so it needs a public URL. In the sandbox the
-    # only public origin is the preview host that serves the web app's /public.
-    suffix = os.environ.get("BASE44_PUBLIC_HOST_SUFFIX", "").strip()
-    return f"https://3000-{suffix}/{LOGO_PATH}" if suffix else ""
+    return explicit or _asset_url(LOGO_PATH)
 
 
 def config() -> dict | None:
@@ -193,17 +199,42 @@ def _call(cfg: dict, method: str, path: str, body: dict | None = None) -> tuple[
 
 
 def _class_design(cfg: dict, store_name: str) -> dict:
-    """The part of the class this module owns: gold field, ornament, Arabic type.
+    """The part of the class this module owns: gold field, pattern art, Arabic type.
 
     Kept apart from the creation payload so a later PATCH can restyle an existing
     class without touching its review status.
     """
-    return {
+    design = {
         "issuerName": store_name,
         "programName": store_name,
         "programLogo": {"sourceUri": {"uri": cfg["logo"]}},
         "hexBackgroundColor": GOLD,
     }
+
+    hero = _asset_url(HERO_PATH)
+    if hero:
+        design["heroImage"] = {
+            "sourceUri": {"uri": hero},
+            "contentDescription": {
+                "defaultValue": {"language": "ar", "value": "نقش هندسي ذهبي"}
+            },
+        }
+
+    pattern = _asset_url(PATTERN_PATH)
+    if pattern:
+        design["imageModulesData"] = [
+            {
+                "id": "ornament",
+                "mainImage": {
+                    "sourceUri": {"uri": pattern},
+                    "contentDescription": {
+                        "defaultValue": {"language": "ar", "value": "زخرفة خاتم"}
+                    },
+                },
+            }
+        ]
+
+    return design
 
 
 def _object_payload(
@@ -255,40 +286,66 @@ def _submit_class(cfg: dict) -> None:
         raise WalletError(f"Google rejected the class submission: {message}")
 
 
+def _image_uri(holder: dict | None) -> str | None:
+    return ((holder or {}).get("sourceUri") or {}).get("uri")
+
+
+def _design_is_current(body: dict, design: dict) -> bool:
+    """Whether Google already carries exactly this design."""
+    have_bg = (body.get("hexBackgroundColor") or "").lower()
+    if have_bg != design["hexBackgroundColor"].lower():
+        return False
+    for field in ("issuerName", "programName"):
+        if body.get(field) != design[field]:
+            return False
+    for field in ("programLogo", "heroImage"):
+        if _image_uri(body.get(field)) != _image_uri(design.get(field)):
+            return False
+
+    def module_uris(mods: list) -> list:
+        return [_image_uri(module.get("mainImage")) for module in mods]
+
+    return module_uris(body.get("imageModulesData") or []) == module_uris(
+        design.get("imageModulesData") or []
+    )
+
+
 def ensure_class(cfg: dict, store_name: str) -> None:
     """Create the store's class if needed, give it the design, and make it saveable.
 
-    Google only accepts class edits while it is DRAFT or UNDER_REVIEW, so once the
-    class is approved this settles into a single read.
+    Google refuses a design PATCH on an approved class unless the same call sends
+    it back for review, so a shipped restyle is applied the next time a guest asks
+    for a save link: the class only goes through review when the design actually
+    changed, and a test-mode issuer is re-approved immediately.
     """
     status, body = _call(cfg, "GET", f"/loyaltyClass/{class_id(cfg)}")
+    design = _class_design(cfg, store_name)
+
     if status != 200:
         status, body = _call(
             cfg,
             "POST",
             "/loyaltyClass",
-            {
-                "id": class_id(cfg),
-                **_class_design(cfg, store_name),
-                "reviewStatus": "DRAFT",
-            },
+            {"id": class_id(cfg), **design, "reviewStatus": "DRAFT"},
         )
         if status >= 400:
             message = body.get("error", {}).get("message") or body
             raise WalletError(f"Google rejected the pass class: {message}")
+        _submit_class(cfg)
+        return
 
-    if body.get("reviewStatus") not in ("draft", "under_review"):
+    if _design_is_current(body, design) and body.get("reviewStatus") != "draft":
         return
 
     status, payload = _call(
-        cfg, "PATCH", f"/loyaltyClass/{class_id(cfg)}", _class_design(cfg, store_name)
+        cfg,
+        "PATCH",
+        f"/loyaltyClass/{class_id(cfg)}",
+        {**design, "reviewStatus": "UNDER_REVIEW"},
     )
     if status >= 400:
         message = payload.get("error", {}).get("message") or payload
         raise WalletError(f"Google rejected the pass design: {message}")
-
-    if payload.get("reviewStatus", body.get("reviewStatus")) == "draft":
-        _submit_class(cfg)
 
 
 def save_url(cfg: dict, **pass_data) -> str:
