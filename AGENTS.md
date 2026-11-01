@@ -123,6 +123,10 @@ service.
   with the same status actions, 20s silent refresh).
 - The POS board and the dashboard both read the same `orders` rows (see Phase 4);
   nothing on the dashboard is illustrative any more.
+- An order's timestamp column is **`orders.placed_at`** (there is no
+  `created_at` on `orders`); ad-hoc `psql` queries that assume `created_at` fail
+  with `column "created_at" does not exist` in the `db` logs. Other tables
+  (`audit_logs`, `stock_movements`, `customers`) do use `created_at`.
 - Exercise the write paths with your own ticket: place one in the POS, move it
   new → preparing → served on the board, then delete that order (its items first)
   if it was only a test.
