@@ -113,20 +113,24 @@ docker compose -f docker-compose.base44.yml logs -f api
 
 ## Deploy to Vercel
 
-Two projects from this one repository — the SPA and the API — sharing one
-Postgres database. The web project proxies `/api/*` to the API project, so the
-browser stays on a single origin and the session cookie keeps working.
+One Vercel project with two **services** from this repository — the API and the
+SPA — sharing one Postgres database. The root `vercel.json` declares them and
+routes `/api/*` and `/docs` to the `sufra-api` service and every other path to
+the `sufra-web` service, so the browser stays on a single origin and the session
+cookie keeps working.
 
-The full from-scratch runbook — both projects, every environment variable, the
+The full from-scratch runbook — the services, every environment variable, the
 owner account and troubleshooting — is in [`DEPLOY.md`](DEPLOY.md).
 
 1. **Database.** Create a Postgres database (Neon, Supabase, RDS) and copy its
    pooled connection string in SQLAlchemy form:
    `postgresql+psycopg2://USER:PASSWORD@HOST/DB?sslmode=require`.
 
-2. **API project.** New Vercel project, **Root Directory `apps/api`**.
-   `apps/api/vercel.json` serves the whole FastAPI app as one Python function and
-   sends every route to it (`/docs` included). Environment variables:
+2. **The project.** Import this repository with the **repository root** as the
+   Root Directory. The root `vercel.json` declares both services — `sufra-api`
+   (`apps/api`, framework `fastapi`) and `sufra-web` (`apps/web`, framework
+   `vite`) — plus the top-level rewrites that publish them. Environment
+   variables (set on the project; `sufra-api` is their only reader):
 
    | Name | Value |
    | --- | --- |
@@ -151,14 +155,7 @@ owner account and troubleshooting — is in [`DEPLOY.md`](DEPLOY.md).
    **Team** (the owner creates a restaurant's admin, an admin adds everyone else).
    Without `SUFRA_OWNER_PASSWORD` the seed creates no account.
 
-4. **Web project.** Second Vercel project, **Root Directory `apps/web`** — Vite is
-   detected and `apps/web/vercel.json` sets the build output and rewrites. It needs
-   no environment variables. Point the `/api/:path*` rewrite at the API project's
-   domain: it ships as the placeholder `https://YOUR-API-PROJECT.vercel.app`, so
-   replace that host with yours (Vercel does not interpolate variables inside
-   `vercel.json`).
-
-5. Deploy both (`vercel --prod`, or push and let the Git integration build). The
+4. **Deploy** (`vercel --prod`, or push and let the Git integration build). The
    API function re-runs `create_all`/`ensure_columns` on a cold start, which is
    idempotent; rate-limit counters live in the function instance, so a large team
    would move them to Redis (see `SECURITY.md`).

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "sufra-api": {
+      "root": "apps/api",
+      "framework": "fastapi",
+      "entrypoint": "app.main:app",
+      "functions": {
+        "**/*.py": {
+          "maxDuration": 30
+        }
+      }
+    },
+    "sufra-web": {
+      "root": "apps/web",
+      "framework": "vite",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "sufra-api"
+      }
+    },
+    {
+      "source": "/docs",
+      "destination": {
+        "service": "sufra-api"
+      }
+    },
+    {
+      "source": "/openapi.json",
+      "destination": {
+        "service": "sufra-api"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "sufra-web"
+      }
+    }
+  ]
+}

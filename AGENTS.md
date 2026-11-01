@@ -81,15 +81,22 @@ service.
   docker-compose.base44.yml exec db psql -U fbos -d fbos` — because the usual
   defaults (`postgres`, or the product name `sufra`) do not exist here and each
   attempt logs a `FATAL: role "..." does not exist` line into `db`'s log.
-- Production runs as two Vercel projects against one managed Postgres:
-  `apps/api` as the project root (`api/index.py` is the Python function and its
-  `vercel.json` sends every route there) and `apps/web` as a static `dist` build
-  whose `vercel.json` proxies `/api/*` to the API domain, so it stays one origin
-  and the session cookie works. `DEPLOY.md` is the from-scratch runbook (both
-  projects, every env var, the one-time owner seed and troubleshooting); README →
-  *Deploy to Vercel* is the short version. The web project's `/api/*` rewrite host
-  ships as the placeholder `https://YOUR-API-PROJECT.vercel.app` and must be
-  replaced before deploying.
+- Production runs as **one Vercel project with two services** against one managed
+  Postgres. The **root `vercel.json` is the only Vercel config** (there is no
+  `vercel.json` under `apps/`): a `services` block declaring `sufra-api`
+  (`apps/api`, framework `fastapi`, entrypoint `app.main:app`) and `sufra-web`
+  (`apps/web`, framework `vite`, `npm run build` → `dist`, with the SPA fallback
+  rewrite scoped to that service). Two top-level rewrites publish them —
+  `/api/(.*)`, `/docs` and `/openapi.json` go to `sufra-api`, everything else to
+  `sufra-web` — so the browser stays on one origin and the session cookie plus
+  every relative `/api/...` call in `apps/web/src/lib/api.ts` work unchanged.
+  **There are no service bindings, and none are needed**: a binding only injects
+  a URL that server-side functions can read, `sufra-web` is a static build with
+  no functions, and `sufra-api` calls nothing. The SPA reaches the API over the
+  public same-origin rewrite. `vercel dev` (or `vercel dev -L`) runs both services
+  locally. `DEPLOY.md` is the from-scratch runbook (services, every env var, the
+  one-time owner seed and troubleshooting); README → *Deploy to Vercel* is the
+  short version.
 - Accent color is tenant data (`tenants.accent_color`, default `#0A84FF`), applied
   to `--accent` at runtime after `/api/dashboard` loads. Language and theme live in
   `localStorage` (`fbos.lang`, `fbos.theme`); Arabic RTL is the default.
