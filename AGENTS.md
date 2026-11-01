@@ -540,7 +540,11 @@ service.
 - UI: `components/BranchMenu.tsx` sits at the top of the sidebar — the trigger
   shows the store name over the active branch, the menu lists every branch
   (`menuitemradio`, checked = active) and a real **إضافة فرع** button (44px, accent
-  colour, not disabled) opening a `Sheet` form. Switching calls
+  colour, not disabled) opening a `Sheet` form. That row renders only for
+  `canManageStore(role)` — the admin or the platform owner — because
+  `POST /api/branches` is `auth.require_admin`: a manager or cashier used to see
+  the button, send the form, and read the generic "try again" for the API's 403.
+  A 403 that still arrives now reads `branch.forbidden`. Switching calls
   `window.location.reload()`: the orders board, POS and reports read branch-scoped
   tickets on mount, so the app restarts on the chosen location rather than
   half-updating.

@@ -1,7 +1,9 @@
 import { Check, ChevronDown, Plus, Store } from 'lucide-react';
 import { useState } from 'react';
 import { api, type Branch } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
+import { canManageStore } from '../lib/roles';
 import { useAppData } from '../lib/store';
 import Sheet from './Sheet';
 
@@ -29,6 +31,9 @@ export default function BranchMenu({
 }: Props) {
   const { t, lang } = useLang();
   const { reload } = useAppData();
+  const { user } = useAuth();
+  // Locations are store structure: the admin and the platform owner add them.
+  const canAdd = canManageStore(user?.role);
   const [open, setOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY);
@@ -86,8 +91,13 @@ export default function BranchMenu({
       // Show the branch the store just gained, ready to be picked.
       setOpen(true);
     } catch (err) {
+      const message = String(err);
       setError(
-        String(err).includes('409') ? t('branch.exists') : t('branch.error'),
+        message.includes('409')
+          ? t('branch.exists')
+          : message.includes('403')
+            ? t('branch.forbidden')
+            : t('branch.error'),
       );
     } finally {
       setSaving(false);
@@ -154,16 +164,20 @@ export default function BranchMenu({
               );
             })}
 
-            <div className="my-1 border-t border-line" />
+            {canAdd ? (
+              <>
+                <div className="my-1 border-t border-line" />
 
-            <button
-              type="button"
-              onClick={openForm}
-              className="flex min-h-11 w-full items-center gap-2 rounded-[8px] px-2.5 py-2 text-start text-[13px] font-semibold text-accent transition-colors duration-150 hover:bg-surface-2"
-            >
-              <Plus size={15} className="shrink-0" />
-              {t('store.addBranch')}
-            </button>
+                <button
+                  type="button"
+                  onClick={openForm}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-[8px] px-2.5 py-2 text-start text-[13px] font-semibold text-accent transition-colors duration-150 hover:bg-surface-2"
+                >
+                  <Plus size={15} className="shrink-0" />
+                  {t('store.addBranch')}
+                </button>
+              </>
+            ) : null}
 
             {error && !formOpen ? (
               <p role="alert" className="px-2.5 pb-1 pt-1 text-[12px] text-red-500">
