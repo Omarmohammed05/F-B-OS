@@ -30,7 +30,11 @@ API_ROOT = "https://walletobjects.googleapis.com/walletobjects/v1"
 SAVE_ROOT = "https://pay.google.com/gp/v/save/"
 
 CLASS_SUFFIX = "sufra_loyalty"
-LOGO_PATH = "sufra-logo.png"
+LOGO_PATH = "sufra-wallet-badge.png"
+
+# Premium gold field for the pass header; the ornament badge and the Arabic
+# modules sit on it.
+GOLD = "#A8842F"
 
 _token_cache: dict = {"value": None, "expires_at": 0.0}
 
@@ -188,15 +192,17 @@ def _call(cfg: dict, method: str, path: str, body: dict | None = None) -> tuple[
         raise WalletError(f"Could not reach Google: {error}")
 
 
-def _class_payload(cfg: dict, store_name: str, accent: str) -> dict:
+def _class_design(cfg: dict, store_name: str) -> dict:
+    """The part of the class this module owns: gold field, ornament, Arabic type.
+
+    Kept apart from the creation payload so a later PATCH can restyle an existing
+    class without touching its review status.
+    """
     return {
-        "id": class_id(cfg),
         "issuerName": store_name,
         "programName": store_name,
         "programLogo": {"sourceUri": {"uri": cfg["logo"]}},
-        "hexBackgroundColor": accent or "#0A84FF",
-        # DRAFT keeps the class unsubmitted: demo mode until publishing access.
-        "reviewStatus": "DRAFT",
+        "hexBackgroundColor": GOLD,
     }
 
 
@@ -222,25 +228,67 @@ def _object_payload(
             "value": f"sufra-{customer_id}",
             "alternateText": str(customer_id),
         },
-        "loyaltyPoints": {"label": "POINTS", "balance": {"int": int(points)}},
+        "loyaltyPoints": {"label": "نقاط", "balance": {"int": int(points)}},
         "textModulesData": [
-            {"id": "stamps", "header": "STAMPS", "body": f"{stamps}/{target}"},
-            {"id": "reward", "header": "REWARD", "body": reward},
+            {"id": "stamps", "header": "الأختام", "body": f"{stamps}/{target}"},
+            {"id": "reward", "header": "المكافأة", "body": reward},
         ],
     }
 
 
-def ensure_class(cfg: dict, store_name: str, accent: str) -> None:
-    """Create the store's pass class once; later calls are a cheap GET."""
-    status, _ = _call(cfg, "GET", f"/loyaltyClass/{class_id(cfg)}")
-    if status == 200:
+def _submit_class(cfg: dict) -> None:
+    """Submit the class for review.
+
+    A draft class takes no objects — Google answers "Wallet Object Class ... not
+    approved" and the guest's save fails with a generic error. Submitting is a
+    reviewStatus change to UNDER_REVIEW; an issuer in test mode is approved
+    immediately, a live one waits for Google's review.
+    """
+    status, body = _call(
+        cfg,
+        "PATCH",
+        f"/loyaltyClass/{class_id(cfg)}",
+        {"reviewStatus": "UNDER_REVIEW"},
+    )
+    if status >= 400:
+        message = body.get("error", {}).get("message") or body
+        raise WalletError(f"Google rejected the class submission: {message}")
+
+
+def ensure_class(cfg: dict, store_name: str) -> None:
+    """Create the store's class if needed, give it the design, and make it saveable.
+
+    Google only accepts class edits while it is DRAFT or UNDER_REVIEW, so once the
+    class is approved this settles into a single read.
+    """
+    status, body = _call(cfg, "GET", f"/loyaltyClass/{class_id(cfg)}")
+    if status != 200:
+        status, body = _call(
+            cfg,
+            "POST",
+            "/loyaltyClass",
+            {
+                "id": class_id(cfg),
+                **_class_design(cfg, store_name),
+                "reviewStatus": "DRAFT",
+            },
+        )
+        if status >= 400:
+            message = body.get("error", {}).get("message") or body
+            raise WalletError(f"Google rejected the pass class: {message}")
+
+    if body.get("reviewStatus") not in ("draft", "under_review"):
         return
+
     status, payload = _call(
-        cfg, "POST", "/loyaltyClass", _class_payload(cfg, store_name, accent)
+        cfg, "PATCH", f"/loyaltyClass/{class_id(cfg)}", _class_design(cfg, store_name)
     )
     if status >= 400:
         message = payload.get("error", {}).get("message") or payload
-        raise WalletError(f"Google rejected the pass class: {message}")
+        raise WalletError(f"Google rejected the pass design: {message}")
+
+    if payload.get("reviewStatus", body.get("reviewStatus")) == "draft":
+        _submit_class(cfg)
 
 
 def save_url(cfg: dict, **pass_data) -> str:

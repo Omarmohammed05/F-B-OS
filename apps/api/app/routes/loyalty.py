@@ -127,9 +127,7 @@ def wallet_link(card_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Customer not found")
     program = get_program(db, tenant)
     try:
-        wallet.ensure_class(
-            cfg, tenant.name_ar or tenant.name_en, tenant.accent_color
-        )
+        wallet.ensure_class(cfg, tenant.name_ar or tenant.name_en)
         url = wallet.save_url(
             cfg,
             card_id=card.id,

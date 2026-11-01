@@ -276,10 +276,18 @@ service.
   `{issuer}.sufra_loyalty` and a member's object is `{issuer}.card_{card.id}`.
   There is no `wallet_object_id` column and no schema change.
 - `GET /api/loyalty/cards/{id}/wallet-link` returns `{save_url}` and creates the
-  class on first use (`ensure_class`, `reviewStatus: DRAFT`). It answers **503**
-  when the integration is not configured and **502** when Google rejects the call.
-  The object travels inside the JWT, so the guest's first save needs nothing
-  pre-created on Google's side.
+  class on first use (`ensure_class`). It answers **503** when the integration is
+  not configured and **502** when Google rejects the call. The object travels
+  inside the JWT, so the guest's first save needs nothing pre-created on Google's
+  side.
+- **A draft class cannot take objects.** Google answers `Wallet Object Class {...}
+  not approved` and the guest's Google screen shows only "Something went wrong",
+  so `ensure_class` submits the class (`reviewStatus` → `UNDER_REVIEW`) right after
+  creating it and Google approves a test-mode issuer immediately (`approved`).
+  Google accepts class edits only while it is `draft`/`under_review`, which is why
+  the design is written before the submission and an approved class is only read
+  afterwards — restyling it again needs the Wallet console. Diagnose with a direct
+  `POST /loyaltyObject` against the API: its body carries Google's real reason.
 - `push_wallet` mirrors stamps/redemption/points onto an already-saved pass; it is
   best effort and swallows every `WalletError`, so a Google outage never fails a
   stamp at the counter. A 404 from `PATCH` just means the guest never saved it.
@@ -299,8 +307,14 @@ service.
   logs api`.
 - `programLogo` must be a public HTTPS image, because Google fetches it itself.
   `GOOGLE_WALLET_LOGO_URL` overrides it; otherwise the sandbox falls back to
-  `https://3000-$BASE44_PUBLIC_HOST_SUFFIX/sufra-logo.png`, served from
-  `apps/web/public/sufra-logo.png` (a generated 660×660 wordmark).
+  `https://3000-$BASE44_PUBLIC_HOST_SUFFIX/sufra-wallet-badge.png`, served from
+  `apps/web/public/sufra-wallet-badge.png` (an 8-point khatim ornament in espresso
+  `#14110C` on transparent, 660×660, generated once with Pillow).
+- Pass styling is premium gold: `GOLD` (`#A8842F`) is the class field and the dark
+  badge sits on it; the object modules are Arabic (`نقاط`, `الأختام`, `المكافأة`).
+  `components/loyalty/WalletCard.tsx` mirrors that palette so the in-app card and
+  the Google pass match. Arabic labels are never letter-spaced — tracking breaks
+  the joined script — so the small label style switches on `lang`.
 - Verifying: without the real key use a throwaway RSA key, point
   `GOOGLE_WALLET_SERVICE_ACCOUNT` at it and check the minted token with
   `jwt.decode(..., audience="google")` — that proves the claims, object id and
