@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import DeleteRestaurantDialog from '../components/platform/DeleteRestaurantDialog';
 import RestaurantDialog from '../components/platform/RestaurantDialog';
 import { api, type PlatformRestaurant, type RestaurantsData } from '../lib/api';
-import { formatCurrency, formatNumber } from '../lib/format';
+import { formatCurrency, formatMonth, formatNumber } from '../lib/format';
 import { useLang } from '../lib/i18n';
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -139,7 +139,9 @@ export default function RestaurantsPage() {
           <Stat
             label={t('platform.statIncomeMonth')}
             value={money(data.summary.income_month)}
-            hint={t('platform.statMonth', { month: data.month })}
+            hint={t('platform.statMonth', {
+              month: formatMonth(lang, data.month),
+            })}
           />
         </div>
       ) : null}

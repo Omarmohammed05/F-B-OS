@@ -174,7 +174,7 @@ export default function RestaurantDialog({
             inputMode="decimal"
             type="number"
             min={0}
-            step={50}
+            step="any"
             value={price}
             onChange={(event) => {
               setPrice(event.target.value);

@@ -20,6 +20,15 @@ export function formatCurrency(lang: Lang, value: number, currency = 'EGP') {
   }).format(value);
 }
 
+/** A `2026-11` month key as a month and year, in the reader's own language. */
+export function formatMonth(lang: Lang, key: string) {
+  const [year, month] = key.split('-').map(Number);
+  return new Intl.DateTimeFormat(locale(lang), {
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(year || 2000, (month || 1) - 1, 1));
+}
+
 export function formatDayShort(lang: Lang, iso: string) {
   return new Intl.DateTimeFormat(locale(lang), {
     day: 'numeric',

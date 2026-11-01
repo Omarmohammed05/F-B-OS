@@ -175,9 +175,11 @@ service.
   ingredient's unit cost changes historical food cost but not historical revenue.
   `top_products`, `channels` and `payments` are revenue-sorted and capped at five
   products.
-- Team: `GET/POST /api/team`, `PATCH/DELETE /api/team/{id}`. Roles are
-  owner / manager / cashier / kitchen. The last active owner cannot be demoted,
-  deactivated or deleted (**409**) — the UI shows that message instead.
+- Team: `GET/POST /api/team`, `PATCH/DELETE /api/team/{id}`. A restaurant's people
+  are admin / manager / cashier / kitchen; `owner` is the platform role above them
+  (see *The platform owner, restaurants and income*). The last active admin of a
+  restaurant and the last active platform owner cannot be demoted, deactivated or
+  deleted (**409**) — the UI shows that message instead.
 - UI routes: `/customers` (searchable book, detail sheet with order history),
   `/reports` (7/30-day range, chart, margin, top products, channel/payment splits,
   CSV download) and `/team` (roster with role chips and an active toggle).
@@ -433,8 +435,10 @@ service.
   backfilled for existing rows by `BACKFILLS` in `db.py` (runs on every boot, only
   touches empty values). The Wallet barcode and `accountId` use it instead of the
   customer id, and a pass carries no phone number or email.
-- Tests live in `apps/api/tests/` and run in the api container (`pytest tests -q`,
-  33 checks). They use the app's own database, so each one creates uniquely named
+- Tests live in `apps/api/tests/` and run in the api container (`python -m pytest
+  tests -q`, 38 checks — the `python -m` form is the one that resolves the `app`
+  package; bare `pytest` fails with `ModuleNotFoundError: No module named 'app'`).
+  They use the app's own database, so each one creates uniquely named
   rows and deletes exactly those again — the seeded store must be back at 8 orders,
   5 guests, 6 staff, 10 products, 12 ingredients, 1 tenant, 0 audit rows, 0
   movements after a run. Check with the counts in `psql` if a test ever fails
@@ -518,11 +522,14 @@ service.
   same 401 message for an unknown name and a wrong password, and is rate limited to
   **10 a minute per caller** (`security.RULES`).
 - `auth.current_user` is the dependency for "any signed-in member";
-  `auth.require_admin` adds the role check. Only `admin` may create, edit or delete
-  accounts — a cashier or manager gets **403** from `POST/PATCH/DELETE /api/team`
-  and just reads the roster. An admin can create *any* role, including another
-  admin, but the store always keeps one active admin and one active owner (**409**),
-  and nobody can switch off or delete their own admin account (**409**).
+  `auth.require_admin` adds the role check and `auth.require_owner` the platform
+  one. `require_admin` accepts a restaurant's `admin` **or** the platform `owner`
+  (who outranks them); staff roles are operational only. A cashier or manager gets
+  **403** from `POST/PATCH/DELETE /api/team`, `PATCH /api/settings` and
+  `POST /api/branches`, and just reads the roster. An admin can create any role
+  except `owner`, but a restaurant always keeps one active admin, the platform
+  keeps one active owner (**409**), and nobody can switch off or delete their own
+  account (**409**). Only the owner reaches `/api/restaurants` and `/api/income`.
 - `staff.username` / `staff.password_hash` / `staff.onboarded_at` are additive
   columns in `db.py`, plus `ux_staff_username` (unique per store where the username
   is not empty). A roster entry with an empty username has no sign-in — that is how
@@ -549,7 +556,7 @@ service.
   shows `@username` in the roster, and removing that member removes the account.
   Leave the roster at its seeded six.
 
-## Several restaurants, one admin
+## The platform owner, restaurants and income
 
 - The tenant a request reads is **the signed-in member's restaurant**, not the
   first row. `auth.SessionGate` calls `deps.set_request_tenant(staff.tenant_id)`
@@ -557,29 +564,59 @@ service.
   lowest-id tenant outside a request: seed, tests, scripts). Adding a tenant
   therefore never changes what an existing session sees, and a new restaurant's
   people land in their own empty store.
-- `admin` is **platform-level**: it lists every restaurant and can create, edit
-  and delete accounts in any of them. `GET /api/team?restaurant_id=N` and
-  `POST /api/team` `{restaurant_id}` are the only places a restaurant id is
-  accepted, and both answer **403** for anyone who is not an admin.
-  `PATCH`/`DELETE /api/team/{id}` resolve the member's own restaurant for the
-  owner/admin "keep one active" guards and write the audit row under it.
-- `GET /api/restaurants` and `POST /api/restaurants` (`{name_ar, name_en}`, admin
-  only, 409 when the English name is taken) open a new restaurant. It starts with
-  no branch, menu, guests or setup tasks — every page already renders that state —
-  and copies `currency`, `tax_rate` and `default_language` from the admin's own
-  store so the till charges tax correctly from the first ticket. There is no
-  delete endpoint for a restaurant; remove a scratch one with SQL.
+- Two levels of authority. `owner` is the **platform** role — whoever runs Sufra
+  OS: only it reaches `/api/restaurants` and `/api/income` (guarded by
+  `auth.require_owner` in `routes/platform.py`). `admin` is a **restaurant** role:
+  its own roster, profile and locations. `auth.require_admin` guards team, settings
+  and branches and also accepts the owner, who outranks them; manager, cashier and
+  kitchen only read. The owner can open any restaurant's roster:
+  `GET /api/team?restaurant_id=N` and `POST /api/team` `{restaurant_id}` answer
+  **403** for everyone else, and `GET /api/team` carries the `restaurants` picker
+  for the owner alone. `PATCH`/`DELETE /api/team/{id}` resolve the member's own
+  restaurant for the "keep one active admin / one active owner" guards.
+- Restaurant lifecycle is `/api/restaurants` (owner only): `GET` lists every one
+  with the summary counts, `monthly_price` and this month's income;
+  `POST` `{name_ar, name_en, software_price?, admin_name?, admin_username?,
+  admin_password?}` opens one (**409** when the English name is taken) and can
+  create its first admin in the same step; `PATCH /{id}` edits the names and
+  `software_price`; `POST /{id}/block` `{blocked}` and `DELETE /{id}?keep_data=…`
+  both answer **409** on the owner's own restaurant. Blocking drops every session
+  in that restaurant, so nobody there stays signed in; `keep_data=true` archives it
+  (rows kept for the books) and `false` erases it with every row carrying its
+  `tenant_id`. A new restaurant starts with no branch, menu, guests or setup tasks
+  — every page already renders that state — and copies `currency`, `tax_rate` and
+  `default_language` from the owner's own store so the till charges tax correctly
+  from the first ticket.
+- Software money is kept apart from ticket money: `tenants.software_price` is the
+  monthly bill and `software_payments` rows are what was actually collected
+  (`POST /api/restaurants/{id}/payments` `{amount, paid_on?, note?}`,
+  `DELETE /api/restaurants/{id}/payments/{payment_id}`). `GET /api/income?months=6`
+  returns one bucket per month, newest first, plus
+  `summary.this_month|total|monthly_price`. Nothing here reads `orders`; a
+  restaurant's own sales stay on its own `/api/reports`.
 - Account names are unique **across all restaurants** (`_new_credentials` queries
   without a tenant filter): the sign-in screen has no store picker, so
   `POST /api/auth/login` finds the account by name and the account says which
   restaurant it opens. The `ux_staff_username` index is still per store; the
   cross-store rule lives in the endpoint.
-- UI: `/team` shows an admin a **restaurant picker** plus **إضافة مطعم**
-  (`components/team/RestaurantDialog.tsx`), and the roster, summary and the
-  create/edit action all follow the selected restaurant. The member dialog states
-  which restaurant a new account joins. Non-admins see their own roster only.
-- Verify with an account of your own: pick **إضافة مطعم**, name it, add a member
-  with a username and password there, sign in as that member in a private window
-  and confirm the store name and roster are the new restaurant's — then delete the
-  member and the restaurant. Tests: `apps/api/tests/test_restaurants.py` (2 checks,
-  removes its own staff, sessions, audit rows and tenant).
+- UI: `/restaurants` (`pages/RestaurantsPage.tsx`) is the owner's list — stat
+  cards, one row per restaurant with its status chip, software price, this month's
+  software income and ticket sales — plus edit
+  (`components/platform/RestaurantDialog.tsx`), block, and remove
+  (`DeleteRestaurantDialog.tsx`, which asks archive-or-erase). `/income`
+  (`pages/IncomePage.tsx`) is the owner's own books, one card per month, and
+  `components/platform/PaymentDialog.tsx` records a payment. Both routes sit in the
+  **Platform** nav group, which `lib/nav.ts` marks `ownerOnly` and `Sidebar`
+  filters on `isOwner`; `components/OwnerOnly.tsx` keeps a typed URL from rendering
+  an empty page (the API answers 403 anyway). `/team` is the restaurant admin's
+  place now: it lists the roster and hides every control unless
+  `canManageStore(role)` (admin or owner) — it no longer creates restaurants.
+- The payment amount fields are `step="any"`: a real transfer is often not a round
+  number, and `step={50}` made the browser refuse a 4,321 payment with its own
+  English validity tooltip before the form was ever submitted.
+- Verify with a scratch restaurant of your own: create it from `/restaurants`
+  (optionally with its first admin), record a payment for it on `/income` and see
+  the month's card, block and unblock it, then remove it with erase
+  (`keep_data=false`), which deletes the rows it created. Tests:
+  `apps/api/tests/test_restaurants.py` create their own staff, sessions, audit rows
+  and tenant and remove them again.

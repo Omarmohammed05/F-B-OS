@@ -140,7 +140,7 @@ export default function PaymentDialog({
               inputMode="decimal"
               type="number"
               min={0}
-              step={50}
+              step="any"
               value={amount}
               onChange={(event) => {
                 setAmount(event.target.value);

@@ -1,12 +1,11 @@
 import { Pencil, Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import RestaurantDialog from '../components/team/RestaurantDialog';
 import StaffDialog from '../components/team/StaffDialog';
 import { api, type Restaurant, type StaffMember, type TeamData } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatNumber } from '../lib/format';
 import { useLang } from '../lib/i18n';
-import { ROLE_LABEL_KEY, ROLE_TONE } from '../lib/roles';
+import { ROLE_LABEL_KEY, ROLE_TONE, canManageStore } from '../lib/roles';
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -22,8 +21,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 export default function TeamPage() {
   const { t, lang } = useLang();
   const { user } = useAuth();
-  // Accounts are created by admins; everyone else sees the roster read-only.
-  const isAdmin = user?.role === 'admin';
+  // Accounts are created by a restaurant admin or the platform owner; everyone
+  // else sees the roster read-only.
+  const canManage = canManageStore(user?.role);
 
   const [team, setTeam] = useState<TeamData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +36,6 @@ export default function TeamPage() {
   // An admin can look at any restaurant's roster; everyone else only sees their
   // own, which is what the API returns when no restaurant is asked for.
   const [restaurantId, setRestaurantId] = useState<number | null>(null);
-  const [restaurantOpen, setRestaurantOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,12 +90,6 @@ export default function TeamPage() {
   const restaurantLabel = (row: Restaurant) =>
     lang === 'ar' ? row.name_ar : row.name_en;
 
-  const handleRestaurantCreated = (created: Restaurant) => {
-    // Open the new restaurant's roster, so the next step is its first account.
-    setRestaurantId(created.id);
-    setDialogOpen(false);
-  };
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -106,7 +99,7 @@ export default function TeamPage() {
           </h1>
           <p className="mt-1 text-[14px] text-ink-2">{t('team.subtitle')}</p>
         </div>
-        {isAdmin ? (
+        {canManage ? (
           <button
             type="button"
             onClick={openNew}
@@ -118,7 +111,7 @@ export default function TeamPage() {
         ) : null}
       </div>
 
-      {isAdmin && team?.restaurants ? (
+      {canManage && team?.restaurants ? (
         <div className="flex flex-wrap items-end gap-2">
           <label className="block">
             <span className="mb-1 block text-[13px] font-medium text-ink-2">
@@ -138,14 +131,6 @@ export default function TeamPage() {
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            onClick={() => setRestaurantOpen(true)}
-            className="btn-quiet h-11 min-h-0 px-3 text-[14px]"
-          >
-            <Plus size={16} />
-            {t('team.addRestaurant')}
-          </button>
         </div>
       ) : null}
 
@@ -166,7 +151,7 @@ export default function TeamPage() {
         </div>
       ) : null}
 
-      {!isAdmin ? (
+      {!canManage ? (
         <p className="rounded-field border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">
           {t('team.adminOnly')}
         </p>
@@ -212,7 +197,7 @@ export default function TeamPage() {
             {team.staff.length === 0 ? t('team.empty') : t('crm.noResults')}
           </p>
           <p className="text-[13px] text-ink-2">{t('team.emptyHint')}</p>
-          {team.staff.length === 0 && isAdmin ? (
+          {team.staff.length === 0 && canManage ? (
             <button type="button" onClick={openNew} className="btn-primary mt-2">
               <Plus size={17} />
               {t('team.new')}
@@ -260,7 +245,7 @@ export default function TeamPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {isAdmin ? (
+                    {canManage ? (
                       <button
                         type="button"
                         onClick={() => toggleActive(member)}
@@ -298,7 +283,7 @@ export default function TeamPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end">
-                      {isAdmin ? (
+                      {canManage ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -332,12 +317,6 @@ export default function TeamPage() {
         restaurant={team?.restaurant ?? null}
         onClose={() => setDialogOpen(false)}
         onSaved={applyTeam}
-      />
-
-      <RestaurantDialog
-        open={restaurantOpen}
-        onClose={() => setRestaurantOpen(false)}
-        onCreated={handleRestaurantCreated}
       />
     </div>
   );

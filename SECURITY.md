@@ -19,10 +19,11 @@ The restaurant behind a request is taken from **the session, never from the
 request body or query string**: `auth.SessionGate` stamps the signed-in member's
 `tenant_id` into a context variable and `deps.current_tenant` reads it, so a
 caller cannot ask for another store's data and no read/write schema exposes a
-`tenant_id`. The two documented exceptions are admin-only and explicit: reading
-another restaurant's roster (`GET /api/team?restaurant_id=…`) and creating an
-account in it (`POST /api/team` with `restaurant_id`) — both answer **403** for
-anyone who is not an `admin`, and every write is re-resolved server-side. The
+`tenant_id`. The documented exceptions are platform-owner-only and explicit:
+reading another restaurant's roster (`GET /api/team?restaurant_id=…`), creating an
+account in it (`POST /api/team` with `restaurant_id`), and the whole
+`/api/restaurants` + `/api/income` surface — all answer **403** for anyone who is
+not an `owner`, and every write is re-resolved server-side. The
 tests prove ids from a second store in the same database answer exactly like ids
 that do not exist.
 
@@ -44,7 +45,7 @@ management today (see the gate table).
 | 3.2 Field-level security (hide cost/profit/cash from cashiers) | **Outstanding** — roles exist, but no payload is trimmed by role yet: a signed-in cashier sees the same costs, margins and guest book as an owner. |
 | 3.2 Ledger, audit trail and derived loyalty numbers are not writable | **Done.** `stock.py` is the only writer of `stock_qty`; there are no update/delete routes on movements or audit rows (`test_ledger_and_trail_have_no_write_routes`); points are derived per request, never stored. |
 | 3.3 Explicit field allow-lists (no mass assignment) | **Done.** Every write takes a Pydantic model with named fields; no endpoint spreads a request body into a model. Role/access changes go through `PATCH /api/team/{id}` only. |
-| 3.3 Function-level authorization (`requireRole`) | **Done for accounts, outstanding elsewhere.** `POST/PATCH/DELETE /api/team`, `GET /api/team?restaurant_id=…` and `GET/POST /api/restaurants` require the `admin` role (403 otherwise, tested) and a member cannot remove their own admin access. `admin` is platform-level: it manages accounts in every restaurant, which is why account names are unique across them (sign-in resolves the restaurant from the account) and why the owner/admin "keep one active" guards run against the member's own restaurant. Every other endpoint only requires *a* session; per-role restrictions on money, stock and settings are the remaining work. |
+| 3.3 Function-level authorization (`requireRole`) | **Done for accounts and the platform surface, outstanding elsewhere.** `POST/PATCH/DELETE /api/team`, `PATCH /api/settings` and `POST /api/branches` require the restaurant `admin` (or the platform `owner`, who outranks them); `auth.require_owner` alone gates `/api/restaurants` (create, edit, block, remove) and `/api/income` (list, record and delete payments). Both roles are tested: 403 for everyone else. A member cannot remove their own account or leave a restaurant without an active admin / the platform without an active owner. Account names stay unique across restaurants (sign-in resolves the restaurant from the account), which is why the "keep one active" guards run against the member's own restaurant. Every other endpoint only requires *a* session; per-role restrictions on money, stock and settings are the remaining work. |
 | 3.4 Money computed server-side | **Done.** The order payload has no price or total; the server loads products and the store's tax rate, and `test_order_totals_are_recomputed_not_taken_from_the_client` sends forged `price`/`total` and proves they are ignored. |
 | 3.4 Validation: qty 1–99, no negative money | **Done.** `qty` is `gt=0, le=99`; prices, costs and stock are `ge=0`; `test_order_rejects_bad_quantities`. |
 | 3.4 Idempotency key | **Done.** `Idempotency-Key` header, unique per store (`ux_orders_idempotency`); a retry returns the original ticket, a race is caught by the unique index. |
