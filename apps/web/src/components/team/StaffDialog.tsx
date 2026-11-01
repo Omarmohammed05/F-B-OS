@@ -1,4 +1,4 @@
-import { Trash2 } from 'lucide-react';
+import { KeyRound, Trash2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   api,
@@ -8,9 +8,8 @@ import {
   type TeamData,
 } from '../../lib/api';
 import { useLang } from '../../lib/i18n';
+import { ROLE_LABEL_KEY, ROLES } from '../../lib/roles';
 import Sheet from '../Sheet';
-
-const ROLES: StaffRole[] = ['owner', 'manager', 'cashier', 'kitchen'];
 
 type Props = {
   open: boolean;
@@ -30,9 +29,13 @@ export default function StaffDialog({
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<StaffRole>('cashier');
   const [active, setActive] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const creating = member === null;
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +43,8 @@ export default function StaffDialog({
     setPhone(member?.phone ?? '');
     setRole(member?.role ?? 'cashier');
     setActive(member?.is_active ?? true);
+    setUsername(member?.username ?? '');
+    setPassword('');
     setSaving(false);
     setError(null);
     setConfirmDelete(false);
@@ -53,6 +58,18 @@ export default function StaffDialog({
       return;
     }
 
+    const wantsLogin = creating || Boolean(member?.has_login);
+    if (wantsLogin && creating && (username.trim() || password)) {
+      if (!username.trim() || !password) {
+        setError(t('team.credentials'));
+        return;
+      }
+    }
+    if (password && password.length < 8) {
+      setError(t('team.passwordShort'));
+      return;
+    }
+
     setSaving(true);
     setError(null);
     const payload: StaffInput = {
@@ -61,6 +78,13 @@ export default function StaffDialog({
       role,
       is_active: active,
     };
+    if (creating) {
+      payload.username = username.trim();
+      payload.password = password;
+    } else if (password) {
+      payload.password = password;
+    }
+
     try {
       const data = member
         ? await api.updateStaff(member.id, payload)
@@ -68,9 +92,10 @@ export default function StaffDialog({
       onSaved(data);
       onClose();
     } catch (err) {
-      setError(
-        String(err).includes('409') ? t('team.lastOwner') : t('team.invalid'),
-      );
+      const message = String(err);
+      if (message.startsWith('409')) setError(t('team.conflict'));
+      else if (message.startsWith('422')) setError(t('team.credentials'));
+      else setError(t('team.invalid'));
     } finally {
       setSaving(false);
     }
@@ -84,9 +109,9 @@ export default function StaffDialog({
       onSaved(data);
       onClose();
     } catch (err) {
-      setError(
-        String(err).includes('409') ? t('team.lastOwner') : t('team.invalid'),
-      );
+      const message = String(err);
+      if (message.startsWith('409')) setError(t('team.conflict'));
+      else setError(t('team.invalid'));
     } finally {
       setSaving(false);
     }
@@ -174,7 +199,7 @@ export default function StaffDialog({
             >
               {ROLES.map((value) => (
                 <option key={value} value={value}>
-                  {t(`team.role.${value}` as 'team.role.owner')}
+                  {t(ROLE_LABEL_KEY[value])}
                 </option>
               ))}
             </select>
@@ -190,8 +215,52 @@ export default function StaffDialog({
           </label>
         </div>
 
+        <div className="rounded-field border border-line bg-surface-2 p-3">
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+            <KeyRound size={14} className="text-ink-2" />
+            {t('team.loginSection')}
+          </p>
+          <p className="mt-1 text-[12px] text-ink-2">
+            {creating ? t('team.loginHintNew') : t('team.loginHintEdit')}
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {creating ? (
+              <label className="block">
+                <span className="mb-1 block text-[13px] font-medium text-ink-2">
+                  {t('team.username')}
+                </span>
+                <input
+                  className="field"
+                  dir="ltr"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="cashier.ahmed"
+                />
+              </label>
+            ) : null}
+            <label className="block">
+              <span className="mb-1 block text-[13px] font-medium text-ink-2">
+                {creating ? t('team.password') : t('team.newPassword')}
+              </span>
+              <input
+                className="field"
+                dir="ltr"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+
         {error ? (
-          <p className="text-[13px] font-medium text-[color:var(--danger)]">
+          <p
+            role="alert"
+            className="text-[13px] font-medium text-[color:var(--danger)]"
+          >
             {error}
           </p>
         ) : null}

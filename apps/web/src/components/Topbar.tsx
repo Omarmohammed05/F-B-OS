@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useLang } from '../lib/i18n';
 import { useTheme } from '../lib/theme';
 import NotificationsMenu from './NotificationsMenu';
+import UserMenu from './UserMenu';
 
 type Props = {
   onOpenMenu: () => void;
@@ -59,6 +60,7 @@ export default function Topbar({ onOpenMenu, onOpenPos }: Props) {
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
           <NotificationsMenu />
+          <UserMenu />
           <button
             type="button"
             onClick={onOpenPos}

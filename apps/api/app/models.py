@@ -185,15 +185,36 @@ class Customer(Base):
 
 
 class Staff(Base):
+    """A team member. A row with a username and password can sign in."""
+
     __tablename__ = "staff"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     phone: Mapped[str] = mapped_column(String(40), default="")
+    # admin / owner / manager / cashier / kitchen. Only `admin` creates accounts.
     role: Mapped[str] = mapped_column(String(16), default="cashier")
+    # Empty for a roster entry that has no sign-in (the seed still has those).
+    username: Mapped[str] = mapped_column(String(60), default="", index=True)
+    password_hash: Mapped[str] = mapped_column(String(200), default="")
+    # Set when the first sign-in tour is finished or skipped.
+    onboarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class AuthSession(Base):
+    """One signed-in browser. Only the token's fingerprint is stored."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class Order(Base):

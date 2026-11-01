@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta
 
+from .auth import hash_password
 from .db import Base, SessionLocal, engine, ensure_columns
 from .models import (
     ActivityRow,
@@ -180,6 +181,11 @@ STAFF = [
     ("Karim Nabil", "0109 888 7766", "kitchen", True),
     ("Mariam Saleh", "0128 444 9900", "cashier", False),
 ]
+
+# The one sign-in a fresh store ships with (see AGENTS.md). Real users are
+# created from the Team page by this admin.
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "sufra1234"
 
 DEMO_ORDERS = [
     ("dine_in", 7, "", "preparing", "cash", 24, [("Latte", 2), ("Cheesecake", 1)]),
@@ -449,6 +455,27 @@ def seed() -> None:
                         is_active=active,
                     )
                 )
+
+        # One admin sign-in, so a fresh store and an existing one both have a
+        # way in. It is the documented demo account (AGENTS.md); an admin can
+        # add real users and reset this password from the Team page.
+        if (
+            db.query(Staff)
+            .filter(Staff.tenant_id == tenant.id, Staff.username == ADMIN_USERNAME)
+            .count()
+            == 0
+        ):
+            db.add(
+                Staff(
+                    tenant_id=tenant.id,
+                    name="Sufra Admin",
+                    phone="",
+                    role="admin",
+                    is_active=True,
+                    username=ADMIN_USERNAME,
+                    password_hash=hash_password(ADMIN_PASSWORD),
+                )
+            )
 
         if db.query(Order).filter_by(tenant_id=tenant.id).count() == 0:
             catalog = {

@@ -31,8 +31,13 @@ a **live dashboard**, a **settings** surface that edits the store itself,
 - **Reports** (`/reports`) — net sales, orders, average ticket, food cost and
   margin for the last 7 or 30 days, top products, channel and payment splits,
   and a CSV export.
-- **Team** (`/team`) — staff with roles (owner, manager, cashier, kitchen) and an
-  active toggle; the store always keeps one active owner.
+- **Sign-in and the tour** (`/login`, `/onboarding`) — the whole app sits behind a
+  staff account. The first sign-in opens a seven-step tour of what the app does,
+  and it can be reopened from the account menu.
+- **Team** (`/team`) — staff with roles (admin, owner, manager, cashier, kitchen)
+  and an active toggle; the store always keeps one active owner and one active
+  admin. Only an admin can add people, give them a username and password, or change
+  a role — an admin may create any role, including another admin.
 - **Settings** (`/settings`) — the store's own record: name in both languages,
   accent color, currency, tax rate and how many tables the POS offers. Every
   change is written straight to the records the rest of the app reads.
@@ -50,6 +55,10 @@ API: `/api/menu`, `/api/menu/categories`, `/api/menu/products`,
 `/api/customers`, `/api/loyalty`, `/api/ingredients/{id}/movements`,
 `/api/reports`, `/api/reports/export.csv`, `/api/team`, `/api/settings`,
 `/api/audit` (interactive docs at http://localhost:8000/docs).
+
+Every route except `/api/health` needs a session; `POST /api/auth/login`,
+`POST /api/auth/logout`, `GET /api/auth/me` and `POST /api/auth/onboarding` are
+the session's own endpoints.
 
 ## Stack
 
@@ -70,6 +79,11 @@ docker compose -f docker-compose.base44.yml up -d --build
 
 Then open http://localhost:3000. First boot runs `migrate` (creates tables and
 seeds the demo store "Qahwa House" / "بيت القهوة").
+
+You land on the sign-in page. The seed creates one admin account so the first
+login works — **`admin` / `sufra1234`** — and the first sign-in shows the product
+tour. Change that password from the Team page before real use, and add the rest of
+the team from there (only an admin can create users).
 
 ```bash
 docker compose -f docker-compose.base44.yml ps      # service health

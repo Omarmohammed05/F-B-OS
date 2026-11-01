@@ -331,13 +331,16 @@ export type ReportData = {
   payments: { payment_method: PaymentMethod; orders: number; revenue: number }[];
 };
 
-export type StaffRole = 'owner' | 'manager' | 'cashier' | 'kitchen';
+export type StaffRole = 'admin' | 'owner' | 'manager' | 'cashier' | 'kitchen';
 
 export type StaffMember = {
   id: number;
   name: string;
   phone: string;
   role: StaffRole;
+  username: string;
+  has_login: boolean;
+  onboarded: boolean;
   is_active: boolean;
   created_at: string | null;
 };
@@ -356,6 +359,18 @@ export type StaffInput = {
   phone?: string;
   role: StaffRole;
   is_active?: boolean;
+  username?: string;
+  password?: string;
+};
+
+export type AuthUser = {
+  id: number;
+  name: string;
+  username: string;
+  phone: string;
+  role: StaffRole;
+  is_active: boolean;
+  needs_onboarding: boolean;
 };
 
 export type SettingsData = {
@@ -441,6 +456,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // The cookie is HttpOnly and same-origin, so every call carries the session.
+  me: () => request<AuthUser>('/api/auth/me'),
+  login: (username: string, password: string) =>
+    request<AuthUser>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  finishOnboarding: () =>
+    request<AuthUser>('/api/auth/onboarding', { method: 'POST' }),
+
   dashboard: () => request<DashboardData>('/api/dashboard'),
   notifications: () => request<NotificationsData>('/api/notifications'),
   branches: () => request<BranchesData>('/api/branches'),

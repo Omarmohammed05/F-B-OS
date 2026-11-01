@@ -1,8 +1,10 @@
-import { Globe, Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import type { Branch } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 import { NAV_GROUPS } from '../lib/nav';
+import { ROLE_LABEL_KEY } from '../lib/roles';
 import { useTheme } from '../lib/theme';
 import BranchMenu from './BranchMenu';
 import SetupCard from './SetupCard';
@@ -24,6 +26,7 @@ export default function Sidebar({
 }: Props) {
   const { t, lang, setLang } = useLang();
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto border-e border-line bg-surface px-3 py-5">
@@ -102,15 +105,21 @@ export default function Sidebar({
         </div>
 
         <div className="flex items-center gap-2.5 border-t border-line pt-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-[12px] font-semibold text-ink-2">
-            <Globe size={15} />
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold uppercase"
+            style={{
+              background: 'var(--accent-soft)',
+              color: 'var(--accent)',
+            }}
+          >
+            {(user?.name ?? storeName).trim().charAt(0)}
           </span>
           <span className="min-w-0">
             <span className="block truncate text-[13px] font-semibold text-ink">
-              {t('store.owner')}
+              {user?.name ?? storeName}
             </span>
             <span className="block truncate text-[12px] text-ink-2">
-              {storeName}
+              {user ? t(ROLE_LABEL_KEY[user.role]) : storeName}
             </span>
           </span>
         </div>

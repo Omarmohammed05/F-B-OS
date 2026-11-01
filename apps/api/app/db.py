@@ -30,6 +30,11 @@ ADDITIVE_COLUMNS = [
     # ticket was rung up in.
     ("tenants", "active_branch_id", "INTEGER NOT NULL DEFAULT 0"),
     ("orders", "branch_id", "INTEGER NOT NULL DEFAULT 0"),
+    # Sign-in: a username turns a roster entry into a user account, and the
+    # tour flag keeps the first-run tutorial to one visit.
+    ("staff", "username", "VARCHAR(60) NOT NULL DEFAULT ''"),
+    ("staff", "password_hash", "VARCHAR(200) NOT NULL DEFAULT ''"),
+    ("staff", "onboarded_at", "TIMESTAMP NULL"),
 ]
 
 ADDITIVE_INDEXES = [
@@ -39,6 +44,9 @@ ADDITIVE_INDEXES = [
     "CREATE UNIQUE INDEX IF NOT EXISTS ux_orders_idempotency"
     " ON orders (tenant_id, idempotency_key) WHERE idempotency_key <> ''",
     "CREATE INDEX IF NOT EXISTS ix_orders_branch_id ON orders (branch_id)",
+    # One account name per store; roster entries without a login are exempt.
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_staff_username"
+    " ON staff (tenant_id, username) WHERE username <> ''",
 ]
 
 # A ticket rung up before branches existed belongs to the store's first branch,

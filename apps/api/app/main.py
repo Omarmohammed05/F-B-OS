@@ -7,12 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from . import wallet
+from . import auth, wallet
 from .dashboard import build_dashboard
 from .db import Base, engine, ensure_columns, get_db
 from .deps import current_tenant
 from .models import SetupTask, Tenant
 from .routes import audit as audit_routes
+from .routes import auth as auth_routes
 from .routes import branches as branch_routes
 from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
@@ -58,8 +59,13 @@ app.add_middleware(
 )
 
 
+app.add_middleware(auth.SessionGate)
+
+# Added last, so it is the outermost layer: a 401 from the gate is rate-limited
+# and carries the security headers like every other reply.
 app.add_middleware(Hardening)
 
+app.include_router(auth_routes.router)
 app.include_router(menu_routes.router)
 app.include_router(inventory_routes.router)
 app.include_router(pos_routes.router)

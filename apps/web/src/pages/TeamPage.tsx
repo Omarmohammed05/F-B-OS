@@ -2,22 +2,10 @@ import { Pencil, Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import StaffDialog from '../components/team/StaffDialog';
 import { api, type StaffMember, type TeamData } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { formatNumber } from '../lib/format';
-import { useLang, type TranslationKey } from '../lib/i18n';
-
-const ROLE_TONE: Record<StaffMember['role'], string> = {
-  owner: 'var(--accent)',
-  manager: 'var(--warning)',
-  cashier: 'var(--success)',
-  kitchen: 'var(--text-2)',
-};
-
-const ROLE_KEY: Record<StaffMember['role'], TranslationKey> = {
-  owner: 'team.role.owner',
-  manager: 'team.role.manager',
-  cashier: 'team.role.cashier',
-  kitchen: 'team.role.kitchen',
-};
+import { useLang } from '../lib/i18n';
+import { ROLE_LABEL_KEY, ROLE_TONE } from '../lib/roles';
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -32,6 +20,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default function TeamPage() {
   const { t, lang } = useLang();
+  const { user } = useAuth();
+  // Accounts are created by admins; everyone else sees the roster read-only.
+  const isAdmin = user?.role === 'admin';
 
   const [team, setTeam] = useState<TeamData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,7 +58,7 @@ export default function TeamPage() {
     const needle = query.trim().toLowerCase();
     if (!needle) return team.staff;
     return team.staff.filter((member) =>
-      `${member.name} ${member.phone} ${member.role}`
+      `${member.name} ${member.phone} ${member.role} ${member.username}`
         .toLowerCase()
         .includes(needle),
     );
@@ -101,14 +92,16 @@ export default function TeamPage() {
           </h1>
           <p className="mt-1 text-[14px] text-ink-2">{t('team.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          onClick={openNew}
-          className="btn-primary h-11 min-h-0 px-4 text-[14px]"
-        >
-          <Plus size={17} />
-          {t('team.new')}
-        </button>
+        {isAdmin ? (
+          <button
+            type="button"
+            onClick={openNew}
+            className="btn-primary h-11 min-h-0 px-4 text-[14px]"
+          >
+            <Plus size={17} />
+            {t('team.new')}
+          </button>
+        ) : null}
       </div>
 
       {team ? (
@@ -122,10 +115,16 @@ export default function TeamPage() {
             value={formatNumber(lang, team.summary.active)}
           />
           <Stat
-            label={t('team.role.kitchen')}
-            value={formatNumber(lang, team.summary.roles.kitchen)}
+            label={t('team.role.admin')}
+            value={formatNumber(lang, team.summary.roles.admin)}
           />
         </div>
+      ) : null}
+
+      {!isAdmin ? (
+        <p className="rounded-field border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-2">
+          {t('team.adminOnly')}
+        </p>
       ) : null}
 
       <label className="relative flex w-full items-center sm:max-w-[320px]">
@@ -168,7 +167,7 @@ export default function TeamPage() {
             {team.staff.length === 0 ? t('team.empty') : t('crm.noResults')}
           </p>
           <p className="text-[13px] text-ink-2">{t('team.emptyHint')}</p>
-          {team.staff.length === 0 ? (
+          {team.staff.length === 0 && isAdmin ? (
             <button type="button" onClick={openNew} className="btn-primary mt-2">
               <Plus size={17} />
               {t('team.new')}
@@ -201,7 +200,7 @@ export default function TeamPage() {
                   <td className="px-4 py-3">
                     <p className="font-medium text-ink">{member.name}</p>
                     <p className="text-[12px] tabular-nums text-ink-2" dir="ltr">
-                      {member.phone || '—'}
+                      {member.has_login ? `@${member.username}` : member.phone || '—'}
                     </p>
                   </td>
                   <td className="px-4 py-3">
@@ -212,53 +211,61 @@ export default function TeamPage() {
                         background: `color-mix(in srgb, ${ROLE_TONE[member.role]} 14%, transparent)`,
                       }}
                     >
-                      {t(ROLE_KEY[member.role])}
+                      {t(ROLE_LABEL_KEY[member.role])}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleActive(member)}
-                      disabled={busyId === member.id}
-                      aria-pressed={member.is_active}
-                      className="inline-flex items-center gap-2 text-[13px] font-medium disabled:opacity-50"
-                      style={{
-                        color: member.is_active
-                          ? 'var(--success)'
-                          : 'var(--text-2)',
-                      }}
-                    >
-                      <span
-                        className="relative inline-block h-5 w-9 rounded-full transition-colors"
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleActive(member)}
+                        disabled={busyId === member.id}
+                        aria-pressed={member.is_active}
+                        className="inline-flex items-center gap-2 text-[13px] font-medium disabled:opacity-50"
                         style={{
-                          background: member.is_active
+                          color: member.is_active
                             ? 'var(--success)'
-                            : 'var(--line)',
+                            : 'var(--text-2)',
                         }}
                       >
                         <span
-                          className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+                          className="relative inline-block h-5 w-9 rounded-full transition-colors"
                           style={{
-                            insetInlineStart: member.is_active ? 18 : 2,
+                            background: member.is_active
+                              ? 'var(--success)'
+                              : 'var(--line)',
                           }}
-                        />
+                        >
+                          <span
+                            className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all"
+                            style={{
+                              insetInlineStart: member.is_active ? 18 : 2,
+                            }}
+                          />
+                        </span>
+                        {member.is_active ? t('team.active') : t('team.inactive')}
+                      </button>
+                    ) : (
+                      <span className="text-[13px] text-ink-2">
+                        {member.is_active ? t('team.active') : t('team.inactive')}
                       </span>
-                      {member.is_active ? t('team.active') : t('team.inactive')}
-                    </button>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditing(member);
-                          setDialogOpen(true);
-                        }}
-                        aria-label={t('team.edit')}
-                        className="icon-btn h-9 w-9"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditing(member);
+                            setDialogOpen(true);
+                          }}
+                          aria-label={t('team.edit')}
+                          className="icon-btn h-9 w-9"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

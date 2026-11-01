@@ -12,6 +12,17 @@ states what is still outstanding (staff sign-in and roles, above all).
 
 ## Run and verify
 
+The app is behind a sign-in, so every `/api` call below needs a session cookie.
+Sign in once with the seeded demo admin (`admin` / `sufra1234`, see the last
+section) and reuse the jar:
+
+```bash
+curl -s -c /tmp/jar -X POST localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"sufra1234"}'
+curl -s -b /tmp/jar localhost:3000/api/dashboard | head -c 200
+```
+
 ```bash
 docker compose -f docker-compose.base44.yml up -d --build
 docker compose -f docker-compose.base44.yml ps            # db, api, web must be healthy
@@ -392,10 +403,12 @@ service.
 - `SECURITY.md` is the checklist the plan asks for: every item marked done, not
   applicable (with the reason) or outstanding. Keep it current — the release gate
   at its end is the honest answer to "are we safe to launch".
-- **There is still no staff sign-in.** `deps.current_tenant` resolves the store
-  from the database, never from the request, so no endpoint can be pointed at
-  another store's data; but every endpoint is open to anyone who reaches the app.
-  Roles, PINs, blind close and per-role field hiding all wait on that one change.
+- **Sign-in exists (see the last section); roles do not gate fields yet.**
+  `deps.current_tenant` still resolves the store from the database, never from the
+  request, so no endpoint can be pointed at another store's data. Every `/api`
+  route now needs a session, but a cashier sees the same costs, margins and guest
+  book an owner does: per-role field hiding, PINs and blind close are the
+  remaining items.
 - `apps/api/app/security.py` holds two things: the `Hardening` middleware (rate
   limits + response headers) and the small helpers `new_token()` (128-bit hex
   handle) and `client_host()`. Budgets are a tuple of `Rule`s; the first matching
@@ -421,10 +434,13 @@ service.
   touches empty values). The Wallet barcode and `accountId` use it instead of the
   customer id, and a pass carries no phone number or email.
 - Tests live in `apps/api/tests/` and run in the api container (`pytest tests -q`,
-  20 checks). They use the app's own database, so each one creates uniquely named
+  33 checks). They use the app's own database, so each one creates uniquely named
   rows and deletes exactly those again — the seeded store must be back at 8 orders,
-  5 guests, 10 products, 12 ingredients, 1 tenant, 0 audit rows, 0 movements after
-  a run. Check with the counts in `psql` if a test ever fails halfway.
+  5 guests, 6 staff, 10 products, 12 ingredients, 1 tenant, 0 audit rows, 0
+  movements after a run. Check with the counts in `psql` if a test ever fails
+  halfway. The `client` fixture signs in with the seeded admin, `anonymous` is the
+  same app with no cookie; `test_auth.py` removes the accounts it creates along
+  with their sessions and audit rows.
 - `pytest` and `httpx` are in `requirements.txt`, so the api image needs a rebuild
   after a dependency change: `docker compose -f docker-compose.base44.yml up -d
   --build api`.
@@ -483,3 +499,52 @@ service.
 - The three counts are the seeded baseline in a demo store: 0 new tickets, 0 low
   ingredients, 0 ready rewards, so the panel legitimately reads "nothing needs you".
   Place a ticket or stamp a card to see a row; delete that row again afterwards.
+
+
+## Sign-in, the tour and admin users
+
+- **Every `/api` route needs a session.** `auth.SessionGate` (added in `main.py`
+  *before* `Hardening`, so `Hardening` stays outermost and a 401 still carries the
+  security headers and counts against the rate limit) answers **401** for anything
+  under `/api` without a live cookie. Public: `/api/health`,
+  `/api/auth/login`, `/api/auth/logout`, and `OPTIONS`. A new endpoint is protected
+  by default — no per-route decorator to forget.
+- The session is a random token in the `sufra_session` cookie (`HttpOnly`,
+  `SameSite=Lax`, `Secure` when the proxy forwards `https`). Only its SHA-256
+  fingerprint is stored, in `auth_sessions`; a database copy cannot be replayed as
+  a sign-in. Sessions last 7 days, and deleting a member deletes theirs.
+- Passwords are PBKDF2-SHA256 (`auth.hash_password` / `check_password`), 240k
+  iterations, stdlib only — no new dependency. `POST /api/auth/login` answers the
+  same 401 message for an unknown name and a wrong password, and is rate limited to
+  **10 a minute per caller** (`security.RULES`).
+- `auth.current_user` is the dependency for "any signed-in member";
+  `auth.require_admin` adds the role check. Only `admin` may create, edit or delete
+  accounts — a cashier or manager gets **403** from `POST/PATCH/DELETE /api/team`
+  and just reads the roster. An admin can create *any* role, including another
+  admin, but the store always keeps one active admin and one active owner (**409**),
+  and nobody can switch off or delete their own admin account (**409**).
+- `staff.username` / `staff.password_hash` / `staff.onboarded_at` are additive
+  columns in `db.py`, plus `ux_staff_username` (unique per store where the username
+  is not empty). A roster entry with an empty username has no sign-in — that is how
+  the five seeded people stay name-only, and `has_login` is what the UI reads.
+  A username is 3–60 `[a-z0-9._-]`; a password needs 8 characters.
+- The tour is **server state, not a browser flag**: `onboarded_at` is `NULL` until
+  `POST /api/auth/onboarding`. `user_payload.needs_onboarding` drives
+  `components/RequireAuth.tsx`, which redirects a first sign-in to `/onboarding`
+  before anything else. Finishing or skipping both call the same handler, and the
+  account menu's **Product tour** row reopens it at any time.
+- Frontend: `lib/auth.tsx` holds the signed-in member (`AuthProvider` wraps the
+  routes in `App.tsx`); the session cookie itself is never readable from JS.
+  `pages/LoginPage.tsx` and `pages/OnboardingPage.tsx` render **outside** the shell,
+  and `AppDataProvider` now sits inside `RequireAuth`, so no dashboard request is
+  made before there is a session. `/team` hides the create/edit controls unless the
+  viewer is an admin (`team.adminOnly` explains why).
+- The seeded demo account is **`admin` / `sufra1234`** (`seed.ADMIN_USERNAME` /
+  `ADMIN_PASSWORD`), created on every boot for whichever store has none. It is a
+  development default: replace the password from the Team page (`PATCH /api/team/{id}`
+  accepts `password` for a member that already has a username) before real use.
+- Verifying by hand: signed out, `/` and `/team` bounce to `/login`; a wrong
+  password shows one message; `admin` lands on `/onboarding`, then on the dashboard;
+  `/team` → **إضافة عضو** with a username and password creates a real account that
+  shows `@username` in the roster, and removing that member removes the account.
+  Leave the roster at its seeded six.

@@ -65,6 +65,8 @@ class Rule:
 
 # Specific budgets first: the first matching rule wins.
 RULES: tuple[Rule, ...] = (
+    # Guessing a password is the one flow where ten tries a minute is plenty.
+    Rule(("POST",), r"^/api/auth/login$", 10, 60),
     Rule(("GET",), r"^/api/loyalty/cards/(?P<card>\d+)/wallet-link$", 5, 3600, by_card=True),
     Rule(("GET",), r"^/api/reports/export\.csv$", 5, 3600),
     Rule(("POST",), r"^/api/orders$", 120, 60),

@@ -15,15 +15,19 @@ docker compose -f docker-compose.base44.yml exec -T api python -m pytest tests -
 
 ## The one structural difference
 
-There is **one store per deployment** and **no staff sign-in yet**: `deps.py`
-resolves the tenant from the database (`db.query(Tenant).first()`), never from the
-request, so a caller cannot ask for another store's data and no endpoint accepts a
-`tenant_id`. Cross-store BOLA as described in the plan is therefore not reachable
-through the API today — and the tests prove ids from a second store in the same
-database answer exactly like ids that do not exist.
+There is **one store per deployment**: `deps.py` resolves the tenant from the
+database (`db.query(Tenant).first()`), never from the request, so a caller cannot
+ask for another store's data and no endpoint accepts a `tenant_id`. Cross-store
+BOLA as described in the plan is therefore not reachable through the API today —
+and the tests prove ids from a second store in the same database answer exactly
+like ids that do not exist.
 
-The trade-off is blunt: **every endpoint is open to anyone who can reach the app.**
-That is the outstanding item that gates a real launch (see the gate table).
+**Staff sign-in exists** (`apps/api/app/auth.py`): every `/api` route except the
+health probe and the login/logout pair answers **401** without a live session
+cookie, so the app is no longer open to anyone who can reach it. What is still
+missing is *authorization inside* an authenticated session — a cashier sees the
+same costs, margins and guest book an owner does, because roles only gate account
+management today (see the gate table).
 
 ## P0 — before launch
 
@@ -33,10 +37,10 @@ That is the outstanding item that gates a real launch (see the gate table).
 | 3.1 `tenant_id` never trusted from the client | **Done.** No request schema has a `tenant_id` field; Pydantic drops unknown keys. |
 | 3.1 Every id is checked against the caller's store | **Done.** `get_order`, `get_product`, `get_category`, `get_ingredient`, `get_customer`, `get_staff`, `get_card` all filter by tenant and raise 404. |
 | 3.1 Guest-facing handles are random, not sequential | **Done.** `customers.qr_token` (128-bit hex) replaces the customer row id in the Wallet barcode and `accountId`; `db.py` backfills existing guests on boot. |
-| 3.2 Field-level security (hide cost/profit/cash from cashiers) | **Outstanding** — needs roles. Today every caller sees costs, margins and the full guest book. |
+| 3.2 Field-level security (hide cost/profit/cash from cashiers) | **Outstanding** — roles exist, but no payload is trimmed by role yet: a signed-in cashier sees the same costs, margins and guest book as an owner. |
 | 3.2 Ledger, audit trail and derived loyalty numbers are not writable | **Done.** `stock.py` is the only writer of `stock_qty`; there are no update/delete routes on movements or audit rows (`test_ledger_and_trail_have_no_write_routes`); points are derived per request, never stored. |
 | 3.3 Explicit field allow-lists (no mass assignment) | **Done.** Every write takes a Pydantic model with named fields; no endpoint spreads a request body into a model. Role/access changes go through `PATCH /api/team/{id}` only. |
-| 3.3 Function-level authorization (`requireRole`) | **Outstanding** — no roles exist yet. |
+| 3.3 Function-level authorization (`requireRole`) | **Done for accounts, outstanding elsewhere.** `POST/PATCH/DELETE /api/team` require the `admin` role (403 otherwise, tested) and a member cannot remove their own admin access. Every other endpoint only requires *a* session; per-role restrictions on money, stock and settings are the remaining work. |
 | 3.4 Money computed server-side | **Done.** The order payload has no price or total; the server loads products and the store's tax rate, and `test_order_totals_are_recomputed_not_taken_from_the_client` sends forged `price`/`total` and proves they are ignored. |
 | 3.4 Validation: qty 1–99, no negative money | **Done.** `qty` is `gt=0, le=99`; prices, costs and stock are `ge=0`; `test_order_rejects_bad_quantities`. |
 | 3.4 Idempotency key | **Done.** `Idempotency-Key` header, unique per store (`ux_orders_idempotency`); a retry returns the original ticket, a race is caught by the unique index. |
@@ -51,6 +55,7 @@ That is the outstanding item that gates a real launch (see the gate table).
 
 | Flow | Budget | Status |
 |---|---|---|
+| Password guessing (`POST /api/auth/login`) | 10 / minute per caller | Done — 429 + `Retry-After` |
 | Wallet save link (`GET /api/loyalty/cards/{id}/wallet-link`) | 5 / hour **per card** | Done — 429 + `Retry-After` |
 | CSV export (`GET /api/reports/export.csv`) | 5 / hour per caller | Done, tested |
 | Order creation (`POST /api/orders`) | 120 / minute per caller | Done |
@@ -84,7 +89,7 @@ until staff sign-in gives each session its own identity.
 |---|---|
 | Key is vault-only, least privilege | Done (service account in the vault) |
 | Only card fields in the pass (name, points, stamps, reward) — no phone or email | Done; barcode carries the opaque `qr_token` |
-| Save link requires ownership of the card | **Outstanding** — needs sign-in; today anyone who reaches the app can ask for any card's link |
+| Save link requires ownership of the card | **Partial.** Minting a link now needs a signed-in session and is limited to 5/hour per card, but any signed-in member can ask for any card's link — the link belongs to the guest who saves it, and per-role scoping is still missing. |
 | Rate limited | Done (5/hour per card) |
 | Wallet is never the source of truth | Done — points are derived from orders, pushes are best effort |
 | Demo mode until Google approves publishing | Noted in AGENTS.md (Phase 7) |
@@ -98,7 +103,7 @@ until staff sign-in gives each session its own identity.
 | Discount / void / price edit behind a manager PIN | **Outstanding** — needs roles and a PIN |
 | Audit trail for money, stock and access actions | **Done.** `audit_logs` (append-only) records `order.served`, `order.cancelled`, `stock.purchase|waste`, `ingredient.edit`, `product.price`, `staff.access`, `staff.delete`, `settings.update`, `branch.create`, `branch.activate`, `loyalty.stamp|redeem|remove|program`; read it at `GET /api/audit` |
 | Alerts to the owner (voids, variance, failures) | **Outstanding** — needs notifications and roles |
-| Staff sign-in, PIN hashing, lockout, session lifetime | **Outstanding** — the gating item for launch |
+| Staff sign-in, PIN hashing, lockout, session lifetime | **Done for passwords; PINs are not used.** PBKDF2-SHA256 (240k iterations), per-store unique usernames, one 401 message for a wrong name or password, `auth_sessions` stores only a SHA-256 fingerprint of the cookie token, 7-day sessions, sessions deleted with the member, sign-in limited to 10/minute. Account lockout after repeated failures is not implemented — the rate limit is the only brake. |
 | Security headers | **Partial.** `X-Content-Type-Options`, `Referrer-Policy`, `Cache-Control: no-store`, `X-Frame-Options` on every API reply. **CSP is not set here**: the SPA is served by the Vite dev server, so a strict policy must be added at the reverse proxy/CDN in front of a production build |
 | Personal data (guest phone numbers) | Collected for receipts and the guest book; deleting the customer clears it and keeps the order snapshot. **Before scaling**, confirm Egypt's PDPL obligations and add a documented deletion request path |
 | Backups / restore rehearsal | **Outstanding** — no scheduled export exists yet |
