@@ -1,9 +1,9 @@
 # AGENTS.md — F&B OS
 
-Phase 3: foundation, menu management, the recipe builder, the POS, the orders
-board, the customer book, real reports and the team roster are working features.
-Loyalty and settings are still placeholder surfaces (`ModulePage`) — do not
-present them as working.
+Phase 4: foundation, menu management, the recipe builder, the POS, the orders
+board, the customer book, real reports, the team roster and a live dashboard are
+working features. Loyalty and settings are still placeholder surfaces
+(`ModulePage`) — do not present them as working.
 
 ## Run and verify
 
@@ -53,9 +53,10 @@ service.
 - Accent color is tenant data (`tenants.accent_color`, default `#0A84FF`), applied
   to `--accent` at runtime after `/api/dashboard` loads. Language and theme live in
   `localStorage` (`fbos.lang`, `fbos.theme`); Arabic RTL is the default.
-- Dashboard numbers, revenue series, popular items and recent orders are seeded
-  illustrative data in `apps/api/app/seed.py` — not real analytics. Item imagery
-  is emoji on a neutral tile; there are no product photos in Phase 0.
+- Every dashboard figure is computed from real orders (see Phase 4). The only
+  seeded value it still reads is `daily_metrics.total_tables` — the store's table
+  count, which the POS table picker shares. Item imagery is emoji on a neutral
+  tile; there are no product photos.
 - Setup progress is real persisted state (`setup_tasks`, `PATCH /api/setup/{key}`).
   Seeded with 6 of 7 done so the "finish setup" flow is visible on first load.
 
@@ -111,8 +112,8 @@ service.
 - UI routes: `/pos` (grid + cart, channel, table/customer, payment, send) and
   `/orders` (new / preparing / served columns plus a cancelled list, detail sheet
   with the same status actions, 20s silent refresh).
-- The dashboard KPIs and recent activity are still the illustrative seed rows —
-  they do not read from `orders`. Only the orders board shows real tickets.
+- The POS board and the dashboard both read the same `orders` rows (see Phase 4);
+  nothing on the dashboard is illustrative any more.
 - Exercise the write paths with your own ticket: place one in the POS, move it
   new → preparing → served on the board, then delete that order (its items first)
   if it was only a test.
@@ -161,3 +162,33 @@ service.
 - Exercise the write paths with your own rows: add a customer, open its sheet,
   rename it, delete it; add a staff member, toggle them inactive, delete them.
   Both are removed through the UI in the verification flow - leave none behind.
+
+## Phase 4: live dashboard
+
+- `GET /api/dashboard` is built in `apps/api/app/dashboard.py` from `orders` and
+  `order_items`; `main.py` only adds the setup block. The payload shape is
+  unchanged, so the dashboard components did not need to know.
+- Window is the **last 7 days** (the chip under the title says so):
+  `revenue` is a zero-filled day series of net sales (`subtotal`) for
+  non-cancelled orders, `total_orders` and `popular` use the same window, and
+  `payments` is the collected gross (`total`) by method for that window.
+  `sales_change` is the percentage change of the window against the 7 days
+  before it (0 when the earlier window is empty).
+- Live counts ignore the window: `pending_orders` / `in_progress_orders` count
+  `new` / `preparing` tickets, and `available_tables` is
+  `daily_metrics.total_tables` minus the distinct tables held by open dine-in
+  tickets.
+- `popular` counts orders containing the item and sums line revenue, capped at
+  five and sorted by revenue. `activity` is one row per item line of the eight
+  newest tickets, capped at eight rows.
+- `activity.table_name` is language-neutral (`#12`, or `—` when the ticket has no
+  table), because the column renders the raw string in both languages. Several
+  activity rows can share one order number, so the React key is
+  `number-index` — keying on `number` alone warns about duplicate keys.
+- The Phase-0 seed tables `revenue_points`, `popular_items`, `activity_rows`,
+  `payment_splits` and the `daily_metrics` KPI columns are no longer read by the
+  API. They are left in place so existing databases keep working; drop them only
+  together with their models and seed block.
+- Verify against `/api/dashboard` rather than fixed numbers: compare the KPI
+  cells and the activity table with the JSON, since the values follow the
+  tickets in the database.

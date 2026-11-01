@@ -43,9 +43,9 @@ export default function RecentActivity({ rows, currency }: Props) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row, index) => (
               <tr
-                key={row.number}
+                key={`${row.number}-${index}`}
                 className="border-b border-line last:border-b-0 transition-colors duration-150 hover:bg-surface-2"
               >
                 <td className="px-4 py-3 text-[13px] font-semibold text-ink">

@@ -1,15 +1,18 @@
 # F&B OS
 
 Smart F&B micro-ERP for Egyptian restaurants and cafés. This repository contains
-**Phases 0–3** — an Arabic-first (RTL), calm Apple-style application shell with
+**Phases 0–4** — an Arabic-first (RTL), calm Apple-style application shell with
 language/dark-mode switching and the store setup flow, plus working **menu
 management**, the **recipe builder**, the **POS and orders board**, the
-**customer book**, **reports** computed from real orders and the **team roster**.
-Loyalty and settings remain navigation destinations with explicit "coming soon"
-surfaces.
+**customer book**, **reports** computed from real orders, the **team roster** and
+a **live dashboard**. Loyalty and settings remain navigation destinations with
+explicit "coming soon" surfaces.
 
 ## What works
 
+- **Dashboard** (`/`) — KPIs, the 7-day revenue chart, popular items, recent
+  activity and the payment split are all computed from real orders; open tickets
+  drive the pending / in-progress counts and the available-table figure.
 - **Menu** (`/menu`) — bilingual categories and products, prices, emoji tiles,
   availability switches, search and category filters, create/edit/delete.
 - **Recipe builder** (`/menu/:id/recipe`) — link ingredients and quantities to a
