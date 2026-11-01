@@ -1,8 +1,12 @@
-"""Idempotent schema creation + illustrative Phase 0 seed data."""
+"""Idempotent schema creation, the first owner account, and demo content.
 
+A production database gets the schema, its store row and the owner sign-in and
+nothing else. The demo store (menu, guests, tickets, roster, test sign-ins) is
+written only when ``SEED_DEMO_DATA=1`` — the sandbox compose sets it.
+"""
+
+import os
 from datetime import date, datetime, timedelta
-
-from sqlalchemy import func
 
 from .auth import hash_password
 from .db import Base, SessionLocal, engine, ensure_columns
@@ -191,22 +195,16 @@ STAFF = [
     ("Mariam Saleh", "0128 444 9900", "cashier", False),
 ]
 
-# The one sign-in a fresh platform ships with (see AGENTS.md). It is the
-# platform owner: it opens restaurants, bills them and hands out their admins.
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "sufra1234"
+# Demo content is development only: a production database starts empty.
+# docker-compose.base44.yml sets this to 1 for the sandbox.
+DEMO = os.environ.get("SEED_DEMO_DATA") == "1"
 
-# One sign-in per role so every screen can be tried without hand-adding accounts
-# on the Team page. Each one attaches to a seeded roster row above by name; the
-# platform owner is ADMIN_USERNAME. They share the demo password, and the block
-# only fills a member whose username is still empty, so a renamed or
-# re-passworded account is never overwritten on restart.
-DEMO_LOGINS = [
-    ("Hassan Mahmoud", "storeadmin", "admin"),
-    ("Dina Farouk", "manager", "manager"),
-    ("Youssef Adel", "cashier", "cashier"),
-    ("Karim Nabil", "kitchen", "kitchen"),
-]
+# The platform owner is the only account the seed creates — it opens
+# restaurants, bills them and hands out their admins. No password lives in this
+# file: both come from the environment, so a production deploy supplies its own
+# and the sandbox compose supplies the development pair.
+OWNER_USERNAME = os.environ.get("SUFRA_OWNER_USERNAME", "").strip() or "admin"
+OWNER_PASSWORD = os.environ.get("SUFRA_OWNER_PASSWORD", "")
 
 # The store's standing daily checklist: (Arabic, English, role). An empty role
 # puts the item on everybody's list; otherwise only that position sees it.
@@ -292,9 +290,49 @@ def seed() -> None:
                         title_en=en,
                         summary_ar=sum_ar,
                         summary_en=sum_en,
-                        is_done=done,
+                        # A fresh production store starts with nothing done; the
+                        # demo store shows the flow mostly finished.
+                        is_done=(done and DEMO),
                     )
                 )
+
+        if db.query(LoyaltyProgram).filter_by(tenant_id=tenant.id).count() == 0:
+            db.add(LoyaltyProgram(tenant_id=tenant.id))
+
+        # The one account the seed creates: the platform owner, so a fresh
+        # database can be signed into. The password is never in the code — it is
+        # read from SUFRA_OWNER_PASSWORD (the sandbox compose sets the dev one).
+        if OWNER_PASSWORD:
+            has_owner = (
+                db.query(Staff)
+                .filter(Staff.tenant_id == tenant.id, Staff.role == "owner")
+                .count()
+            )
+            if has_owner == 0:
+                db.add(
+                    Staff(
+                        tenant_id=tenant.id,
+                        name="Sufra Owner",
+                        phone="",
+                        role="owner",
+                        is_active=True,
+                        username=OWNER_USERNAME,
+                        password_hash=hash_password(OWNER_PASSWORD),
+                    )
+                )
+        else:
+            print(
+                "seed: no owner created — set SUFRA_OWNER_USERNAME and "
+                "SUFRA_OWNER_PASSWORD for the first sign-in"
+            )
+
+        # Everything below is demo content for a development store. A production
+        # database (SEED_DEMO_DATA unset) stops here: no demo menu, guests,
+        # tickets, roster or role sign-ins.
+        if not DEMO:
+            db.commit()
+            print("seed: ok (schema, store and owner only)")
+            return
 
         if db.query(DailyMetric).filter_by(tenant_id=tenant.id).count() == 0:
             db.add(
@@ -458,9 +496,6 @@ def seed() -> None:
                 )
             db.flush()
 
-        if db.query(LoyaltyProgram).filter_by(tenant_id=tenant.id).count() == 0:
-            db.add(LoyaltyProgram(tenant_id=tenant.id))
-
         if db.query(LoyaltyCard).filter_by(tenant_id=tenant.id).count() == 0:
             guests = {
                 row.name: row
@@ -495,59 +530,6 @@ def seed() -> None:
                         is_active=active,
                     )
                 )
-
-        # One owner sign-in, so a fresh platform and an existing one both have a
-        # way in. It is the documented demo account (AGENTS.md); the owner can
-        # add real users and reset this password from the Team page.
-        if (
-            db.query(Staff)
-            .filter(Staff.tenant_id == tenant.id, Staff.username == ADMIN_USERNAME)
-            .count()
-            == 0
-        ):
-            db.add(
-                Staff(
-                    tenant_id=tenant.id,
-                    name="Sufra Owner",
-                    phone="",
-                    role="owner",
-                    is_active=True,
-                    username=ADMIN_USERNAME,
-                    password_hash=hash_password(ADMIN_PASSWORD),
-                )
-            )
-
-        # One test sign-in per restaurant role (see DEMO_LOGINS), filled in on an
-        # existing roster row so the Team page keeps a single person per name.
-        for name, username, role in DEMO_LOGINS:
-            taken = (
-                db.query(Staff)
-                .filter(Staff.username != "", func.lower(Staff.username) == username)
-                .first()
-            )
-            if taken is not None:
-                continue
-            member = (
-                db.query(Staff)
-                .filter(
-                    Staff.tenant_id == tenant.id,
-                    Staff.name == name,
-                    Staff.username == "",
-                )
-                .first()
-            )
-            if member is None:
-                member = Staff(tenant_id=tenant.id, name=name, phone="", role=role)
-                db.add(member)
-            member.role = role
-            member.is_active = True
-            member.branch_id = (
-                0
-                if role in ("admin", "owner")
-                else (member.branch_id or tenant.active_branch_id)
-            )
-            member.username = username
-            member.password_hash = hash_password(ADMIN_PASSWORD)
 
         # The standing checklist, matched by English title so a partial seed
         # completes without duplicating tasks.

@@ -95,18 +95,72 @@ there is a single origin (no CORS needed for the app itself).
 docker compose -f docker-compose.base44.yml up -d --build
 ```
 
-Then open http://localhost:3000. First boot runs `migrate` (creates tables and
-seeds the demo store "Qahwa House" / "بيت القهوة").
+Then open http://localhost:3000. First boot runs `migrate` (creates tables and,
+because the compose file sets `SEED_DEMO_DATA=1`, seeds the demo store
+"Qahwa House" / "بيت القهوة").
 
-You land on the sign-in page. The seed creates one admin account so the first
-login works — **`admin` / `sufra1234`** — and the first sign-in shows the product
-tour. Change that password from the Team page before real use, and add the rest of
-the team from there (only an admin can create users).
+You land on the sign-in page. The seed creates one owner account so the first
+login works — **`admin` / `sufra1234`**, the development pair
+`docker-compose.base44.yml` passes in `SUFRA_OWNER_USERNAME` /
+`SUFRA_OWNER_PASSWORD`. Those are the only credentials in the repo; the code
+itself has none. Change the password from the Team page before real use, and add
+the rest of the team from there (only an admin can create users).
 
 ```bash
 docker compose -f docker-compose.base44.yml ps      # service health
 docker compose -f docker-compose.base44.yml logs -f api
 ```
+
+## Deploy to Vercel
+
+Two projects from this one repository — the SPA and the API — sharing one
+Postgres database. The web project proxies `/api/*` to the API project, so the
+browser stays on a single origin and the session cookie keeps working.
+
+1. **Database.** Create a Postgres database (Neon, Supabase, RDS) and copy its
+   pooled connection string in SQLAlchemy form:
+   `postgresql+psycopg2://USER:PASSWORD@HOST/DB?sslmode=require`.
+
+2. **API project.** New Vercel project, **Root Directory `apps/api`**.
+   `apps/api/vercel.json` serves the whole FastAPI app as one Python function and
+   sends every route to it (`/docs` included). Environment variables:
+
+   | Name | Value |
+   | --- | --- |
+   | `DATABASE_URL` | the pooled connection string above |
+   | `GOOGLE_WALLET_ISSUER_ID` | optional — Google Wallet issuer id |
+   | `GOOGLE_WALLET_SERVICE_ACCOUNT` | optional — the whole service-account key JSON |
+
+3. **First owner account.** The demo store is development only (`SEED_DEMO_DATA`
+   is unset in production), so a fresh database starts empty except for the owner.
+   Run the seed once against it:
+
+   ```bash
+   cd apps/api
+   pip install -r requirements.txt
+   DATABASE_URL='postgresql+psycopg2://...' \
+     SUFRA_OWNER_USERNAME=owner SUFRA_OWNER_PASSWORD='a long password' \
+     python -m app.seed
+   ```
+
+   It creates the tables, the store row and that one owner sign-in. Sign in, set
+   the store name, currency and tax rate on **Settings**, then add the team from
+   **Team** (the owner creates a restaurant's admin, an admin adds everyone else).
+   Without `SUFRA_OWNER_PASSWORD` the seed creates no account.
+
+4. **Web project.** Second Vercel project, **Root Directory `apps/web`** — Vite is
+   detected and `apps/web/vercel.json` sets the build output and rewrites. It needs
+   no environment variables. Point the `/api/:path*` rewrite at the API project's
+   domain: it ships as `https://sufra-api.vercel.app`, so replace that host with
+   yours (Vercel does not interpolate variables inside `vercel.json`).
+
+5. Deploy both (`vercel --prod`, or push and let the Git integration build). The
+   API function re-runs `create_all`/`ensure_columns` on a cold start, which is
+   idempotent; rate-limit counters live in the function instance, so a large team
+   would move them to Redis (see `SECURITY.md`).
+
+The sign-in page lists no test accounts: every account is created by the owner or
+an admin from **Team**.
 
 ## Security
 

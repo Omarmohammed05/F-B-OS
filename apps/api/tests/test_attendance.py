@@ -18,7 +18,7 @@ from sqlalchemy import func, text
 from app.auth import hash_password
 from app.main import app
 from app.models import AuditLog, Staff, Tenant
-from app.seed import ADMIN_PASSWORD
+from app.seed import OWNER_PASSWORD
 
 
 def scratch(prefix: str) -> str:
@@ -41,7 +41,7 @@ def attendee(db):
         role="cashier",
         is_active=True,
         username=scratch("attendee").lower(),
-        password_hash=hash_password(ADMIN_PASSWORD),
+        password_hash=hash_password(OWNER_PASSWORD),
     )
     db.add(row)
     db.commit()
@@ -63,7 +63,7 @@ def own_session(attendee):
     with TestClient(app) as test_client:
         signed_in = test_client.post(
             "/api/auth/login",
-            json={"username": attendee.username, "password": ADMIN_PASSWORD},
+            json={"username": attendee.username, "password": OWNER_PASSWORD},
         )
         assert signed_in.status_code == 200, signed_in.text
         yield test_client

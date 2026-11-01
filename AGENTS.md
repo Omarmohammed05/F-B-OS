@@ -13,8 +13,9 @@ states what is still outstanding (staff sign-in and roles, above all).
 ## Run and verify
 
 The app is behind a sign-in, so every `/api` call below needs a session cookie.
-Sign in once with the seeded demo admin (`admin` / `sufra1234`, see the last
-section) and reuse the jar:
+Sign in once with the owner the seed created — in the sandbox that is
+`admin` / `sufra1234`, supplied by `SUFRA_OWNER_USERNAME` / `SUFRA_OWNER_PASSWORD`
+in `docker-compose.base44.yml` (see the last section) — and reuse the jar:
 
 ```bash
 curl -s -c /tmp/jar -X POST localhost:3000/api/auth/login \
@@ -78,6 +79,12 @@ service.
   docker-compose.base44.yml exec db psql -U fbos -d fbos` — because the usual
   defaults (`postgres`, or the product name `sufra`) do not exist here and each
   attempt logs a `FATAL: role "..." does not exist` line into `db`'s log.
+- Production runs as two Vercel projects against one managed Postgres:
+  `apps/api` as the project root (`api/index.py` is the Python function and its
+  `vercel.json` sends every route there) and `apps/web` as a static `dist` build
+  whose `vercel.json` proxies `/api/*` to the API domain, so it stays one origin
+  and the session cookie works. README → *Deploy to Vercel* has the env vars
+  (`DATABASE_URL`, the two optional Wallet ones) and the one-time owner seed.
 - Accent color is tenant data (`tenants.accent_color`, default `#0A84FF`), applied
   to `--accent` at runtime after `/api/dashboard` loads. Language and theme live in
   `localStorage` (`fbos.lang`, `fbos.theme`); Arabic RTL is the default.
@@ -676,26 +683,26 @@ service.
   and `AppDataProvider` now sits inside `RequireAuth`, so no dashboard request is
   made before there is a session. `/team` hides the create/edit controls unless the
   viewer is an admin (`team.adminOnly` explains why).
-- One demo sign-in per role ships with the seed, all with the password
-  **`sufra1234`**:
-
-  | Role | Username | What it opens |
-  | --- | --- | --- |
-  | Platform owner | `admin` | `/restaurants`, `/income`, plus every restaurant's admin surfaces |
-  | Restaurant admin | `storeadmin` | `/team`, `/settings`, branches, the whole store |
-  | Manager | `manager` | operations only; team/settings edits answer 403 |
-  | Cashier | `cashier` | operations only |
-  | Kitchen | `kitchen` | operations only |
-
-  `admin` comes from `seed.ADMIN_USERNAME` / `ADMIN_PASSWORD` and is created on
-  every boot for whichever store has none. The other four come from
-  `seed.DEMO_LOGINS`: the seed fills the username and password into the matching
-  roster row **only while that username is free and the row has none**, so a
-  renamed or re-passworded account survives a restart. `pages/LoginPage.tsx` lists
-  them as tap-to-fill buttons (`DEMO_ACCOUNTS`, `login.demoAccounts`). They are
-  development defaults: replace the passwords from the Team page
-  (`PATCH /api/team/{id}` accepts `password` for a member that already has a
-  username) before real use.
+- **The seed creates exactly one account — the platform owner — and no password
+  lives in the code.** `seed.OWNER_USERNAME` / `seed.OWNER_PASSWORD` come from
+  `SUFRA_OWNER_USERNAME` (default `admin`) and `SUFRA_OWNER_PASSWORD`; the sandbox
+  pair is `admin` / `sufra1234`, set on the `migrate` and `api` services in
+  `docker-compose.base44.yml` (the tests read the same two variables through
+  `tests/conftest.py`). With no `SUFRA_OWNER_PASSWORD` the seed creates the store
+  but no sign-in, and prints why. Every other account is made from **Team**
+  (`POST /api/team`) or together with a restaurant (`POST /api/restaurants`).
+- **Demo content is behind `SEED_DEMO_DATA=1`** (which the sandbox compose sets).
+  Unset — what a production deploy does — the seed writes only the schema, the
+  store row, its first branch, the seven setup tasks (none done), the loyalty
+  program and the owner, then returns before the demo menu, ingredients, recipes,
+  guests, loyalty cards, roster, checklist items, demo shifts and eight demo
+  tickets. `daily_metrics` gets no row either, and every reader handles that:
+  `table_count` falls back to 0 and the POS picker shows 12 tables.
+- The per-role sign-ins that used to be seeded (`storeadmin`, `manager`,
+  `cashier`, `kitchen`) are gone, and so is the tap-to-fill block on
+  `pages/LoginPage.tsx` with `login.demoAccounts`: **the sign-in page lists no
+  accounts at all**. A role still gets its own sign-in, but an admin makes it on
+  `/team`.
 - Verifying by hand: signed out, `/` and `/team` bounce to `/login`; a wrong
   password shows one message; `admin` lands on `/onboarding`, then on the dashboard;
   `/team` → **إضافة عضو** with a username and password creates a real account that

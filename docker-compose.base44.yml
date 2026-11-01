@@ -24,6 +24,11 @@ services:
     volumes:
       - ./apps/api:/app
     environment:
+      # Development only: the demo store and the dev owner password. A
+      # production database is seeded without these (see README, "Deploy").
+      SEED_DEMO_DATA: "1"
+      SUFRA_OWNER_USERNAME: admin
+      SUFRA_OWNER_PASSWORD: sufra1234
       DATABASE_URL: postgresql+psycopg2://fbos:fbos_dev_password@db:5432/fbos
     depends_on:
       db:
@@ -39,6 +44,11 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # Same development pair as `migrate`: the test client in
+      # apps/api/tests/conftest.py signs in with it.
+      SEED_DEMO_DATA: "1"
+      SUFRA_OWNER_USERNAME: admin
+      SUFRA_OWNER_PASSWORD: sufra1234
       DATABASE_URL: postgresql+psycopg2://fbos:fbos_dev_password@db:5432/fbos
       BASE44_PREVIEW_MODE:
       BASE44_PUBLIC_HOST_SUFFIX:

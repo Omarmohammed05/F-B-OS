@@ -15,14 +15,14 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.main import app
-from app.seed import ADMIN_PASSWORD, ADMIN_USERNAME
+from app.seed import OWNER_PASSWORD, OWNER_USERNAME
 
 # A caller address of its own, so rate-limit tests never spend the budget of the
 # real app or of another test. The limiter keys on X-Forwarded-For when the proxy
 # sets it, which is exactly what this header imitates.
 RATE_LIMIT_CALLER = {"x-forwarded-for": "203.0.113.7"}
 
-ADMIN = {"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD}
+ADMIN = {"username": OWNER_USERNAME, "password": OWNER_PASSWORD}
 
 
 @pytest.fixture(scope="session")
