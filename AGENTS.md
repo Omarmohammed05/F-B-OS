@@ -1,4 +1,4 @@
-# AGENTS.md — F&B OS
+# AGENTS.md — Sufra OS
 
 Phases 0–6: foundation, menu management, the recipe builder, the POS, the orders
 board, the customer book, real reports, the team roster, a live dashboard, the

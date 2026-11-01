@@ -14,7 +14,7 @@ services:
       retries: 12
     restart: on-failure
     labels:
-      base44.project: "F&B OS"
+      base44.project: "Sufra OS"
       base44.kind: infra
 
   migrate:
@@ -62,7 +62,7 @@ services:
       start_period: 20s
     restart: on-failure
     labels:
-      base44.project: "F&B OS"
+      base44.project: "Sufra OS"
       base44.kind: api
       base44.port: "8000"
       base44.docs: /docs
@@ -99,7 +99,7 @@ services:
       start_period: 40s
     restart: on-failure
     labels:
-      base44.project: "F&B OS"
+      base44.project: "Sufra OS"
       base44.kind: web
       base44.port: "3000"
 

@@ -30,7 +30,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="F&B OS API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Sufra OS API", version="0.1.0", lifespan=lifespan)
 
 allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 suffix = os.environ.get("BASE44_PUBLIC_HOST_SUFFIX")

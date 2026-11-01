@@ -9,7 +9,7 @@ import {
 } from 'react';
 
 const en = {
-  brand: 'F&B OS',
+  brand: 'Sufra OS',
   'nav.dashboard': 'Dashboard',
   'nav.pos': 'POS',
   'nav.orders': 'Orders',
@@ -69,14 +69,14 @@ const en = {
   'setup.cta': 'Setup',
   'setup.heading': 'Set up your store',
   'setup.lede':
-    'Finish these steps to get the most out of F&B OS. You can come back at any time.',
+    'Finish these steps to get the most out of Sufra OS. You can come back at any time.',
   'setup.back': 'Back to dashboard',
   'setup.toggle': 'Toggle step',
   'setup.completeTitle': 'Setup complete',
   'setup.completeBody': 'Every step is done. Your store is ready for service.',
   'setup.doneOn': 'Done',
   'notFound.title': 'Page not found',
-  'notFound.body': 'This page does not exist in F&B OS yet.',
+  'notFound.body': 'This page does not exist in Sufra OS yet.',
   'notFound.back': 'Back to dashboard',
   'common.loading': 'Loading…',
   'common.error': 'We could not load this data.',
@@ -394,7 +394,7 @@ const en = {
 export type TranslationKey = keyof typeof en;
 
 const ar: Record<TranslationKey, string> = {
-  brand: 'F&B OS',
+  brand: 'Sufra OS',
   'nav.dashboard': 'لوحة التحكم',
   'nav.pos': 'نقطة البيع',
   'nav.orders': 'الطلبات',
@@ -454,14 +454,14 @@ const ar: Record<TranslationKey, string> = {
   'setup.cta': 'إعداد',
   'setup.heading': 'أكمل إعداد متجرك',
   'setup.lede':
-    'أكمل هذه الخطوات للاستفادة الكاملة من F&B OS. يمكنك العودة في أي وقت.',
+    'أكمل هذه الخطوات للاستفادة الكاملة من Sufra OS. يمكنك العودة في أي وقت.',
   'setup.back': 'العودة إلى لوحة التحكم',
   'setup.toggle': 'تغيير حالة الخطوة',
   'setup.completeTitle': 'اكتمل الإعداد',
   'setup.completeBody': 'كل الخطوات مكتملة. متجرك جاهز للعمل.',
   'setup.doneOn': 'مكتملة',
   'notFound.title': 'الصفحة غير موجودة',
-  'notFound.body': 'هذه الصفحة غير متاحة في F&B OS بعد.',
+  'notFound.body': 'هذه الصفحة غير متاحة في Sufra OS بعد.',
   'notFound.back': 'العودة إلى لوحة التحكم',
   'common.loading': 'جارٍ التحميل…',
   'common.error': 'تعذر تحميل البيانات.',

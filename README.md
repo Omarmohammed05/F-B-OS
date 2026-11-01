@@ -1,4 +1,4 @@
-# F&B OS
+# Sufra OS
 
 Smart F&B micro-ERP for Egyptian restaurants and cafés. This repository contains
 **Phases 0–6** — an Arabic-first (RTL), calm Apple-style application shell with
