@@ -662,11 +662,27 @@ service.
   no new endpoint. An unknown token or a
   blocked/removed restaurant answers **404** and the page says the link is not
   active.
+- **A guest follows their ticket by its number.**
+  `GET /api/public/menu/{token}/orders/{number}` (public, 60/min per caller in
+  `security.RULES`, because the numbers are sequential) answers `number, status,
+  channel, table_no, currency, total, item_count, placed_at` and the plate names
+  and quantities — **no** guest name, guest id or delivery address, so a lookup
+  can never read somebody's identity. The ticket must belong to that token's
+  branch; anything else is **404**. The page is `/m/<token>/order/<number>`
+  (`pages/PublicOrderPage.tsx`), linked from the receipt after a guest sends
+  (`m.track`), and it rereads the ticket every 10s until it is served or
+  cancelled. Nothing is stored for it.
+- **The counter finds a ticket by the number off the receipt**: the `/orders`
+  header has a number field that opens that ticket's detail sheet, or says
+  `orders.trackMissing` when the number is not on this branch's 200 newest
+  tickets. It is a lookup over the already-loaded board, not a new endpoint —
+  and it is *not* the top bar's global search (`Topbar`), which has its own
+  `input[type="search"]` earlier in the DOM.
 - Verify: sign in and read the link from `/api/menu/qr`, then call
   `curl -s localhost:3000/api/public/menu/<token>` with **no** cookie. Place a
   guest order from the page or curl, check it on `/orders`, then delete that
   ticket (its items first) and the guest profile it created. Tests:
-  `apps/api/tests/test_public_menu.py` (6 checks, run with no session).
+  `apps/api/tests/test_public_menu.py` (7 checks, run with no session).
 
 ## Try the demo (read-only)
 

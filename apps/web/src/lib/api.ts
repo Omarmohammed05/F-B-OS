@@ -324,6 +324,18 @@ export type PublicOrderReceipt = {
   item_count: number;
 };
 
+export type PublicOrderStatus = {
+  number: string;
+  status: OrderStatus;
+  channel: OrderChannel;
+  table_no: number | null;
+  currency: string;
+  total: number;
+  item_count: number;
+  placed_at: string | null;
+  items: { name_ar: string; name_en: string; emoji: string; qty: number }[];
+};
+
 export type Customer = {
   id: number;
   name: string;
@@ -1100,4 +1112,8 @@ export const publicMenuApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  track: (token: string, number: string) =>
+    request<PublicOrderStatus>(
+      `/api/public/menu/${token}/orders/${encodeURIComponent(number)}`,
+    ),
 };

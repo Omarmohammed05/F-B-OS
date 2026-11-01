@@ -1,5 +1,5 @@
-import { RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { RefreshCw, Search } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import OrderCard from '../components/orders/OrderCard';
 import OrderDetailSheet from '../components/orders/OrderDetailSheet';
 import { api, type Order, type OrderStatus } from '../lib/api';
@@ -36,6 +36,8 @@ export default function OrdersPage() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [query, setQuery] = useState('');
+  const [missed, setMissed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +82,16 @@ export default function OrdersPage() {
       })
       .catch(() => setActionError(true))
       .finally(() => setBusyId(null));
+  };
+
+  /** A typed ticket number jumps straight to that ticket's sheet. */
+  const find = (event: FormEvent) => {
+    event.preventDefault();
+    const wanted = query.trim().replace(/^#/, '');
+    if (!wanted) return;
+    const match = orders.find((order) => order.number === wanted);
+    setMissed(!match);
+    if (match) setSelectedId(match.id);
   };
 
   const open = orders.filter(
@@ -132,15 +144,51 @@ export default function OrdersPage() {
           </h1>
           <p className="mt-1 text-[14px] text-ink-2">{t('orders.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setNonce((value) => value + 1)}
-          className="btn-quiet h-11 min-h-0 gap-1.5 px-4 text-[14px]"
-        >
-          <RefreshCw size={16} />
-          {t('orders.refresh')}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* A number read off a receipt finds its ticket without scanning the board. */}
+          <form onSubmit={find} className="flex items-center gap-1.5">
+            <label className="relative flex items-center">
+              <Search
+                size={16}
+                className="pointer-events-none absolute start-3 text-ink-2"
+              />
+              <input
+                type="search"
+                inputMode="numeric"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setMissed(false);
+                }}
+                placeholder={t('orders.trackPlaceholder')}
+                aria-label={t('orders.track')}
+                className="field h-11 w-[190px] ps-9 tabular-nums"
+              />
+            </label>
+            <button
+              type="submit"
+              className="btn-quiet h-11 min-h-0 gap-1.5 px-3 text-[14px]"
+            >
+              <Search size={16} />
+              {t('orders.track')}
+            </button>
+          </form>
+          <button
+            type="button"
+            onClick={() => setNonce((value) => value + 1)}
+            className="btn-quiet h-11 min-h-0 gap-1.5 px-4 text-[14px]"
+          >
+            <RefreshCw size={16} />
+            {t('orders.refresh')}
+          </button>
+        </div>
       </div>
+
+      {missed ? (
+        <p className="text-[13px] font-medium" style={{ color: 'var(--warning)' }}>
+          {t('orders.trackMissing')}
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Stat

@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ClipboardList,
   Minus,
   Plus,
   RotateCcw,
@@ -9,7 +10,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import Sheet from '../components/Sheet';
 import ExploreGrid from '../components/public/ExploreGrid';
 import MenuItemRow from '../components/public/MenuItemRow';
@@ -272,14 +273,23 @@ export default function PublicMenuPage() {
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setReceipt(null)}
-          className="btn-quiet mt-1 rounded-full px-5"
-        >
-          <RotateCcw size={16} />
-          {t('m.newOrder')}
-        </button>
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+          <Link
+            to={`/m/${token}/order/${receipt.number}`}
+            className="btn-primary h-11 min-h-0 gap-1.5 rounded-full px-5 text-[14px]"
+          >
+            <ClipboardList size={16} />
+            {t('m.track')}
+          </Link>
+          <button
+            type="button"
+            onClick={() => setReceipt(null)}
+            className="btn-quiet h-11 min-h-0 gap-1.5 rounded-full px-5 text-[14px]"
+          >
+            <RotateCcw size={16} />
+            {t('m.newOrder')}
+          </button>
+        </div>
       </div>
     );
   }

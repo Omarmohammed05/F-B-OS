@@ -78,6 +78,9 @@ RULES: tuple[Rule, ...] = (
     # A guest at a table sends a few tickets, never a burst: the QR menu is
     # public, so reading it and ordering from it carry their own budgets.
     Rule(("GET",), r"^/api/public/menu/[0-9a-f]{32}$", 120, 60),
+    # A guest tracking their own ticket polls it, and the numbers are sequential,
+    # so the lookup carries a tighter budget than reading the menu.
+    Rule(("GET",), r"^/api/public/menu/[0-9a-f]{32}/orders/[0-9]+$", 60, 60),
     Rule(("POST",), r"^/api/public/menu/[0-9a-f]{32}/orders$", 20, 60),
     Rule(("POST", "PATCH", "PUT", "DELETE"), r"^/api/", 300, 60),
 )

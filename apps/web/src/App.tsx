@@ -21,6 +21,7 @@ import OrdersPage from './pages/OrdersPage';
 import PlatformPage from './pages/PlatformPage';
 import PosPage from './pages/PosPage';
 import PublicMenuPage from './pages/PublicMenuPage';
+import PublicOrderPage from './pages/PublicOrderPage';
 import QrMenuPage from './pages/QrMenuPage';
 import RecipePage from './pages/RecipePage';
 import ReportsPage from './pages/ReportsPage';
@@ -47,6 +48,8 @@ export default function App() {
         <Route path="activate/:token" element={<ActivatePage />} />
         {/* The stand on the table: a guest's menu, no account of any kind. */}
         <Route path="m/:token" element={<PublicMenuPage />} />
+        {/* The guest following their own ticket by its number. */}
+        <Route path="m/:token/order/:number" element={<PublicOrderPage />} />
 
         <Route element={<RequireAuth />}>
           <Route path="onboarding" element={<OnboardingPage />} />
