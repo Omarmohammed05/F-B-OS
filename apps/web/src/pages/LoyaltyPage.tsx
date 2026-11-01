@@ -1,4 +1,4 @@
-import { Check, Gift, Plus, Stamp, Trash2 } from 'lucide-react';
+import { Check, Gift, Plus, Stamp, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import WalletCard from '../components/loyalty/WalletCard';
 import { api, type LoyaltyData, type LoyaltyProgram } from '../lib/api';
@@ -123,6 +123,16 @@ export default function LoyaltyPage() {
           String(err).includes('409') ? t('loyalty.cardFull') : t('loyalty.actionError'),
         ),
       )
+      .finally(() => setBusyId(null));
+  };
+
+  const openWallet = (id: number) => {
+    setBusyId(id);
+    setActionError(null);
+    api
+      .loyaltyWalletLink(id)
+      .then(({ save_url }) => window.open(save_url, '_blank', 'noopener'))
+      .catch(() => setActionError(t('loyalty.wallet.error')))
       .finally(() => setBusyId(null));
   };
 
@@ -358,6 +368,17 @@ export default function LoyaltyPage() {
                     {t('loyalty.stamp')}
                   </button>
                 )}
+                {loyalty.wallet.enabled ? (
+                  <button
+                    type="button"
+                    onClick={() => openWallet(member.id)}
+                    disabled={busyId === member.id}
+                    className="btn-quiet h-11 min-h-0 px-4 text-[14px] disabled:opacity-50"
+                  >
+                    <Wallet size={16} />
+                    {t('loyalty.wallet.save')}
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </section>

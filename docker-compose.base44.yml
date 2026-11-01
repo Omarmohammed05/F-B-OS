@@ -43,6 +43,10 @@ services:
       BASE44_PREVIEW_MODE:
       BASE44_PUBLIC_HOST_SUFFIX:
       BASE44_SANDBOX_HOST_DOMAIN:
+    # Google Wallet issuer id + service account key. Last, so the user's real
+    # values always win over anything above.
+    env_file:
+      - /run/base44/app.env
     depends_on:
       db:
         condition: service_healthy

@@ -2,5 +2,16 @@
   "previewPort": 3000,
   "healthPath": "/",
   "startCommand": "docker compose -f docker-compose.base44.yml up -d",
-  "secrets": []
+  "secrets": [
+    {
+      "name": "GOOGLE_WALLET_ISSUER_ID",
+      "description": "Google Wallet issuer id (Google Pay & Wallet console, Manage tab). The app stores it with the key so both arrive together.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "GOOGLE_WALLET_SERVICE_ACCOUNT",
+      "description": "The service account key JSON, pasted whole (Google Cloud console > IAM & Admin > Service accounts > Keys > Add key > JSON). Its client_email must be invited as a Developer user in the Wallet console.",
+      "requiredAtBoot": false
+    }
+  ]
 }

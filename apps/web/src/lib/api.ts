@@ -352,6 +352,7 @@ export type LoyaltyData = {
   program: LoyaltyProgram;
   cards: LoyaltyCard[];
   available: { id: number; name: string; phone: string }[];
+  wallet: { enabled: boolean };
   summary: {
     members: number;
     stamps_in_progress: number;
@@ -502,6 +503,8 @@ export const api = {
     request<LoyaltyData>(`/api/loyalty/cards/${id}/stamp`, { method: 'POST' }),
   redeemLoyaltyCard: (id: number) =>
     request<LoyaltyData>(`/api/loyalty/cards/${id}/redeem`, { method: 'POST' }),
+  loyaltyWalletLink: (id: number) =>
+    request<{ save_url: string }>(`/api/loyalty/cards/${id}/wallet-link`),
   updateLoyaltyProgram: (body: Partial<LoyaltyProgram>) =>
     request<LoyaltyData>('/api/loyalty/program', {
       method: 'PATCH',

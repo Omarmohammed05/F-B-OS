@@ -13,6 +13,7 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from . import wallet
 from .models import Customer, LoyaltyCard, LoyaltyProgram, Order, Tenant
 
 # Lifetime points needed for each tier, highest first.
@@ -71,13 +72,51 @@ def guest_stats(db: Session, tenant_id: int) -> dict[int, dict]:
     }
 
 
-def award_stamp(db: Session, tenant: Tenant, customer_id: int) -> bool:
+def card_points(db: Session, tenant_id: int, program: LoyaltyProgram, customer_id: int) -> int:
+    """One guest's derived points, without loading every other guest."""
+    spend = db.query(func.coalesce(func.sum(Order.total), 0.0)).filter(
+        Order.tenant_id == tenant_id,
+        Order.customer_id == customer_id,
+        Order.status != "cancelled",
+    ).scalar() or 0.0
+    return int(round(float(spend) * program.points_per_currency))
+
+
+def push_wallet(db: Session, tenant: Tenant, card: LoyaltyCard) -> None:
+    """Mirror a card onto the guest's saved Google Wallet pass, best effort.
+
+    A Wallet outage or a guest who never saved the pass must never fail a stamp
+    at the counter, so every failure here is swallowed.
+    """
+    cfg = wallet.config()
+    if cfg is None:
+        return
+    customer = db.query(Customer).filter_by(id=card.customer_id).first()
+    if customer is None:
+        return
+    program = get_program(db, tenant)
+    try:
+        wallet.push_object(
+            cfg,
+            card_id=card.id,
+            customer_id=customer.id,
+            customer_name=customer.name,
+            points=card_points(db, tenant.id, program, customer.id),
+            stamps=card.stamps,
+            target=program.stamps_target,
+            reward=program.reward_ar,
+        )
+    except wallet.WalletError:
+        return
+
+
+def award_stamp(db: Session, tenant: Tenant, customer_id: int) -> LoyaltyCard | None:
     """A served ticket advances an enrolled guest's card, when it is not full."""
     if not customer_id:
-        return False
+        return None
     program = db.query(LoyaltyProgram).filter_by(tenant_id=tenant.id).first()
     if program is None or not program.is_active:
-        return False
+        return None
     card = (
         db.query(LoyaltyCard)
         .filter(
@@ -87,10 +126,11 @@ def award_stamp(db: Session, tenant: Tenant, customer_id: int) -> bool:
         .first()
     )
     if card is None or card.stamps >= program.stamps_target:
-        return False
+        return None
     card.stamps += 1
     card.last_stamp_at = datetime.now()
-    return True
+    push_wallet(db, tenant, card)
+    return card
 
 
 def serialize_program(program: LoyaltyProgram) -> dict:
@@ -158,6 +198,7 @@ def serialize_loyalty(db: Session, tenant: Tenant) -> dict:
         "program": serialize_program(program),
         "cards": members,
         "available": available,
+        "wallet": {"enabled": wallet.enabled()},
         "summary": {
             "members": len(members),
             "stamps_in_progress": sum(row["stamps"] for row in members),

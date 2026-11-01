@@ -264,3 +264,39 @@ service.
   (stamps back to 0, `rewards_redeemed` +1), enroll an available guest, then remove
   that card again so the seeded set is left as it was. The seeded numbers are the
   baseline to walk back to.
+
+## Phase 7: Google Wallet passes
+
+- `apps/api/app/wallet.py` talks to the Google Wallet REST API with plain
+  `urllib` + `PyJWT` (the only new dependency, `PyJWT[crypto]`): a signed
+  `savetowallet` JWT for the "add to wallet" link and `PATCH` calls to keep a
+  saved pass in sync. It imports nothing from the app, so `loyalty.py` can import
+  it without the router cycle.
+- Pass naming is derived, never stored: the class is
+  `{issuer}.sufra_loyalty` and a member's object is `{issuer}.card_{card.id}`.
+  There is no `wallet_object_id` column and no schema change.
+- `GET /api/loyalty/cards/{id}/wallet-link` returns `{save_url}` and creates the
+  class on first use (`ensure_class`, `reviewStatus: DRAFT`). It answers **503**
+  when the integration is not configured and **502** when Google rejects the call.
+  The object travels inside the JWT, so the guest's first save needs nothing
+  pre-created on Google's side.
+- `push_wallet` mirrors stamps/redemption/points onto an already-saved pass; it is
+  best effort and swallows every `WalletError`, so a Google outage never fails a
+  stamp at the counter. A 404 from `PATCH` just means the guest never saved it.
+- The feature is **disabled until both `GOOGLE_WALLET_ISSUER_ID` and
+  `GOOGLE_WALLET_SERVICE_ACCOUNT` (the whole key JSON) are present**; the app boots
+  and loyalty works unchanged without them, and `/api/loyalty` reports
+  `wallet.enabled` so the button hides itself.
+- Secrets reach the `api` service through `env_file: /run/base44/app.env` (listed
+  after `environment:`). Do not move them into `environment:` — that would
+  permanently outrank the dashboard value.
+- `programLogo` must be a public HTTPS image, because Google fetches it itself.
+  `GOOGLE_WALLET_LOGO_URL` overrides it; otherwise the sandbox falls back to
+  `https://3000-$BASE44_PUBLIC_HOST_SUFFIX/sufra-logo.png`, served from
+  `apps/web/public/sufra-logo.png` (a generated 660×660 wordmark).
+- Verifying: without the real key use a throwaway RSA key, point
+  `GOOGLE_WALLET_SERVICE_ACCOUNT` at it and check the minted token with
+  `jwt.decode(..., audience="google")` — that proves the claims, object id and
+  signature. Class creation and the actual save need the real key plus a Google
+  account on the issuer's test-account list; in demo mode any other account is
+  refused by Google, not by this app.

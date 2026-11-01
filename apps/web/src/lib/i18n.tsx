@@ -388,6 +388,8 @@ const en = {
   'loyalty.actionError': 'That card could not be updated. Try again.',
   'loyalty.cardFull': 'This card is full — redeem the reward first.',
   'loyalty.notReady': 'This card is not full yet.',
+  'loyalty.wallet.save': 'Add to Google Wallet',
+  'loyalty.wallet.error': 'We could not reach Google Wallet. Try again.',
   'loyalty.loadError': 'We could not load the loyalty program.',
 } as const;
 
@@ -768,6 +770,8 @@ const ar: Record<TranslationKey, string> = {
   'loyalty.actionError': 'تعذر تحديث البطاقة. حاول مرة أخرى.',
   'loyalty.cardFull': 'البطاقة مكتملة — استبدل المكافأة أولًا.',
   'loyalty.notReady': 'البطاقة لم تكتمل بعد.',
+  'loyalty.wallet.save': 'إضافة إلى Google Wallet',
+  'loyalty.wallet.error': 'تعذر الوصول إلى Google Wallet. حاول مرة أخرى.',
   'loyalty.loadError': 'تعذر تحميل برنامج الولاء.',
 };
 

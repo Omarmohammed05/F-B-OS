@@ -33,6 +33,11 @@ a **live dashboard**, a **settings** surface that edits the store itself and
 - **Settings** (`/settings`) — the store's own record: name in both languages,
   accent color, currency, tax rate and how many tables the POS offers. Every
   change is written straight to the records the rest of the app reads.
+- **Google Wallet** — a member's card can be saved to the guest's phone with the
+  "Add to Google Wallet" button, and stamps/points are pushed onto the saved pass
+  whenever the card changes. It stays hidden until
+  `GOOGLE_WALLET_ISSUER_ID` and `GOOGLE_WALLET_SERVICE_ACCOUNT` (the service
+  account key JSON) are set; see AGENTS.md for the demo-mode caveats.
 - **Loyalty** (`/loyalty`) — stamp cards for the guests in your book: stamp a
   card at the counter (served tickets stamp automatically), hand over the reward
   when it is full, and read points and tiers that follow real lifetime spend.

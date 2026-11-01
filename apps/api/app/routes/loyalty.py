@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .. import wallet
 from ..db import get_db
 from ..deps import current_tenant
-from ..loyalty import get_program, serialize_loyalty
+from ..loyalty import card_points, get_program, push_wallet, serialize_loyalty
 from ..models import Customer, LoyaltyCard, Tenant
 
 router = APIRouter(prefix="/api/loyalty", tags=["loyalty"])
@@ -88,6 +89,7 @@ def stamp_card(card_id: int, db: Session = Depends(get_db)):
     card.stamps += 1
     card.last_stamp_at = datetime.now()
     db.commit()
+    push_wallet(db, tenant, card)
     return serialize_loyalty(db, tenant)
 
 
@@ -101,7 +103,46 @@ def redeem_card(card_id: int, db: Session = Depends(get_db)):
     card.stamps = 0
     card.rewards_redeemed += 1
     db.commit()
+    push_wallet(db, tenant, card)
     return serialize_loyalty(db, tenant)
+
+
+@router.get("/cards/{card_id}/wallet-link")
+def wallet_link(card_id: int, db: Session = Depends(get_db)):
+    """Signed "Add to Google Wallet" link for one member card.
+
+    The class is created on first use and the object rides inside the signed
+    token, so the guest's save works without anything pre-existing on Google.
+    """
+    tenant = current_tenant(db)
+    cfg = wallet.config()
+    if cfg is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Google Wallet is not set up yet.",
+        )
+    card = get_card(db, tenant, card_id)
+    customer = db.query(Customer).filter_by(id=card.customer_id).first()
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    program = get_program(db, tenant)
+    try:
+        wallet.ensure_class(
+            cfg, tenant.name_ar or tenant.name_en, tenant.accent_color
+        )
+        url = wallet.save_url(
+            cfg,
+            card_id=card.id,
+            customer_id=customer.id,
+            customer_name=customer.name,
+            points=card_points(db, tenant.id, program, customer.id),
+            stamps=card.stamps,
+            target=program.stamps_target,
+            reward=program.reward_ar,
+        )
+    except wallet.WalletError as error:
+        raise HTTPException(status_code=502, detail=str(error))
+    return {"save_url": url}
 
 
 @router.patch("/program")
