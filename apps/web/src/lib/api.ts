@@ -53,6 +53,19 @@ export type DashboardData = {
   setup: SetupState;
 };
 
+export type NotificationItem = {
+  key: string;
+  href: string;
+  count: number;
+  title_ar: string;
+  title_en: string;
+};
+
+export type NotificationsData = {
+  count: number;
+  items: NotificationItem[];
+};
+
 export type MenuCategory = {
   id: number;
   name_ar: string;
@@ -409,6 +422,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   dashboard: () => request<DashboardData>('/api/dashboard'),
+  notifications: () => request<NotificationsData>('/api/notifications'),
   setup: () => request<SetupState>('/api/setup'),
   updateSetup: (key: string, isDone: boolean) =>
     request<SetupState>(`/api/setup/${key}`, {

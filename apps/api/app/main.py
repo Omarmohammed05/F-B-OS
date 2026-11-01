@@ -17,6 +17,7 @@ from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
 from .routes import loyalty as loyalty_routes
 from .routes import menu as menu_routes
+from .routes import notifications as notification_routes
 from .routes import orders as order_routes
 from .routes import pos as pos_routes
 from .routes import reports as report_routes
@@ -68,6 +69,7 @@ app.include_router(report_routes.router)
 app.include_router(team_routes.router)
 app.include_router(setting_routes.router)
 app.include_router(audit_routes.router)
+app.include_router(notification_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

@@ -1,7 +1,8 @@
-import { Bell, Menu, Moon, Search, Sun } from 'lucide-react';
+import { Menu, Moon, Search, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { useLang } from '../lib/i18n';
 import { useTheme } from '../lib/theme';
+import NotificationsMenu from './NotificationsMenu';
 
 type Props = {
   onOpenMenu: () => void;
@@ -57,17 +58,7 @@ export default function Topbar({ onOpenMenu, onOpenPos }: Props) {
           >
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <button
-            type="button"
-            aria-label={t('top.notifications')}
-            className="icon-btn relative"
-          >
-            <Bell size={17} />
-            <span
-              className="absolute end-2.5 top-2.5 h-1.5 w-1.5 rounded-full"
-              style={{ background: 'var(--accent)' }}
-            />
-          </button>
+          <NotificationsMenu />
           <button
             type="button"
             onClick={onOpenPos}

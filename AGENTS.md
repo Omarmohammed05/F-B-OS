@@ -431,3 +431,18 @@ service.
   the Vite dev server, so a strict policy belongs in front of a production build
   (reverse proxy or CDN), not in `vite.config.ts` where it would fight HMR.
 
+
+## The top bar bell
+
+- `NotificationsMenu.tsx` replaces the old dead bell button: it opens a panel fed
+  by `GET /api/notifications` (`routes/notifications.py`), loads once on mount so
+  the accent dot is honest, and reloads on every open. Escape and an outside click
+  close it; a row navigates to the page that fixes it.
+- The payload is derived per request — nothing is stored and nothing is dismissed:
+  `new` tickets → `/orders`, `stock_qty <= par_level` → `/inventory`, and loyalty
+  cards holding `stamps_target` stamps → `/loyalty`. An empty `items` list renders
+  `top.notifications.empty`; counts are formatted with `formatNumber(lang, …)`, so
+  keep that argument order (`lib/format.ts` takes the language first).
+- The three counts are the seeded baseline in a demo store: 0 new tickets, 0 low
+  ingredients, 0 ready rewards, so the panel legitimately reads "nothing needs you".
+  Place a ticket or stamp a card to see a row; delete that row again afterwards.
