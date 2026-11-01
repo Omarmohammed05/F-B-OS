@@ -2,11 +2,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import AttendanceBoard from '../components/attendance/AttendanceBoard';
 import AttendancePunch from '../components/attendance/AttendancePunch';
+import LateRuleBar from '../components/attendance/LateRuleBar';
 import { api, type AttendanceDay, type AttendanceMember } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDayLong, formatDuration, formatNumber } from '../lib/format';
 import { useLang } from '../lib/i18n';
-import { canSupervise } from '../lib/roles';
+import { canManageStore, canSupervise } from '../lib/roles';
 
 /** Today as the date input and the API read it, in the reader's own timezone. */
 function todayIso(): string {
@@ -30,6 +31,7 @@ export default function AttendancePage() {
   const { t, lang } = useLang();
   const { user } = useAuth();
   const supervises = canSupervise(user?.role);
+  const manages = canManageStore(user?.role);
 
   const [anchor, setAnchor] = useState(todayIso);
   const [day, setDay] = useState<AttendanceDay | null>(null);
@@ -197,6 +199,8 @@ export default function AttendancePage() {
               </p>
             </div>
           </section>
+
+          <LateRuleBar day={day} canEdit={manages} />
 
           {notice ? (
             <p

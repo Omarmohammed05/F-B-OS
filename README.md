@@ -43,12 +43,16 @@ tablet as a PWA.
 - **Attendance** (`/attendance`) — clock in when the shift starts and out when it
   ends. The day board shows who is on the floor, their arrival and departure, and
   the hours worked; a manager can punch a teammate in or out from the counter
-  tablet. Looking at an earlier day shows that day's board.
+  tablet. Looking at an earlier day shows that day's board. An admin sets the
+  shift start and its grace period in Settings, and every late minute after that
+  is deducted from the salary at a rate the admin chooses — the board shows each
+  person's lateness and the day's total deduction.
 - **Installable app** — the web app ships a manifest and a service worker, so it
   can be added to a phone or tablet's home screen and opens full screen. Losing
   the connection shows the app's own offline page instead of the browser's.
 - **Settings** (`/settings`) — the store's own record: name in both languages,
-  accent color, currency, tax rate and how many tables the POS offers. Every
+  accent color, currency, tax rate, how many tables the POS offers, and the
+  attendance rule (shift start, grace minutes, deduction per late minute). Every
   change is written straight to the records the rest of the app reads.
 - **Google Wallet** — a member's card can be saved to the guest's phone with the
   "Add to Google Wallet" button, and stamps/points are pushed onto the saved pass

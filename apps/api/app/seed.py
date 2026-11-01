@@ -37,6 +37,11 @@ TENANT = dict(
     currency="EGP",
     tax_rate=14.0,
     default_language="ar",
+    # The lateness rule behind the demo arrivals below: 08:00 start, five
+    # minutes of grace, two pounds off the salary for every late minute.
+    shift_start="08:00",
+    shift_grace_minutes=5,
+    late_deduction_rate=2.0,
 )
 
 SETUP_TASKS = [

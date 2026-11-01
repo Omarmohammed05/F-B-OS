@@ -42,6 +42,11 @@ def serialize_settings(db: Session, tenant: Tenant) -> dict:
             "table_count": metrics.total_tables if metrics else 0,
             "open_tables": open_dine_in_tables(db, tenant),
         },
+        "attendance": {
+            "shift_start": tenant.shift_start,
+            "grace_minutes": tenant.shift_grace_minutes,
+            "deduction_per_minute": tenant.late_deduction_rate,
+        },
     }
 
 
@@ -52,6 +57,12 @@ class SettingsIn(BaseModel):
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     tax_rate: float | None = Field(default=None, ge=0, le=100)
     table_count: int | None = Field(default=None, ge=0, le=200)
+    # An empty shift start switches the lateness rule off entirely.
+    shift_start: str | None = Field(
+        default=None, pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$"
+    )
+    grace_minutes: int | None = Field(default=None, ge=0, le=180)
+    deduction_per_minute: float | None = Field(default=None, ge=0, le=10000)
 
 
 @router.get("")
@@ -83,6 +94,15 @@ def update_settings(
     for field in ("name_ar", "name_en", "accent_color", "currency", "tax_rate"):
         if field in changes:
             setattr(tenant, field, changes[field])
+
+    # The lateness rule: what the attendance board cuts from a late arrival.
+    for field, column in (
+        ("shift_start", "shift_start"),
+        ("grace_minutes", "shift_grace_minutes"),
+        ("deduction_per_minute", "late_deduction_rate"),
+    ):
+        if field in changes:
+            setattr(tenant, column, changes[field])
 
     if "table_count" in changes:
         metrics = db.query(DailyMetric).filter_by(tenant_id=tenant.id).first()

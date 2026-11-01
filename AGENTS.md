@@ -731,6 +731,33 @@ service.
 - The seed adds today's demo shifts (`Hassan` and `Dina` still on the floor,
   `Youssef` already left) only when the store has no attendance rows at all, so a
   restart never duplicates a punch.
+
+## Lateness and the salary deduction
+
+- Three additive `tenants` columns (`db.py` **and** `models.py`): `shift_start`
+  (`"HH:MM"`, empty means the rule is off), `shift_grace_minutes` (0–180) and
+  `late_deduction_rate` (money per late minute). The seed writes `08:00` / 5 / 2
+  for a fresh store so the demo arrivals (08:05, 08:30, 08:15) show the feature;
+  an existing store keeps whatever it has until an admin saves the card.
+- The rule is **edited in `/settings`** (`PATCH /api/settings`, so
+  `auth.require_admin` — a manager or cashier gets 403) in the *الحضور وخصم
+  التأخير* card, and read back on `/attendance` by everyone.
+- Lateness is **derived per request, never stored**: `late_minutes` is the day's
+  first arrival past `shift_start + grace`, so a split shift is late once, and
+  `deduction = late_minutes × late_deduction_rate`. `GET /api/attendance` carries
+  `rules` plus `late_minutes`/`deduction` per member and
+  `late_count`/`late_minutes`/`deduction` in `summary`. Editing the rule reprices
+  past days too — that is the point of deriving it, and the reason nothing needs
+  a migration when the rate changes.
+- UI: `components/attendance/LateRuleBar.tsx` sits under the three-cell summary
+  (rule, "خصم التأخير اليوم", late count; an admin with no rule yet gets the
+  "اضبطه من الإعدادات" link), and each late row in `AttendanceBoard` prints
+  `متأخر N د · خصم X`. The settings card is three fields — shift start
+  (`type="time"`, empty switches it off), grace minutes and the rate per minute.
+- Tests: `tests/test_attendance.py::test_late_minutes_cut_the_salary` checks in a
+  scratch member, sets the rule relative to that arrival (30 min before, 5 min
+  grace, 2/min → 25 late minutes and 50 off), asserts the board repriced and the
+  grace window zeroes it, then patches the store's previous rule back.
 - Tests: `apps/api/tests/test_attendance.py` (6 checks) create a scratch cashier
   with a sign-in and remove their shifts, sessions, audit rows (by id watermark)
   and the person again. Baseline after a run: the seeded shifts, nothing else.

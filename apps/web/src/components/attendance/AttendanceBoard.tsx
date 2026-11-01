@@ -1,6 +1,11 @@
 import { LogIn, LogOut } from 'lucide-react';
 import type { AttendanceDay, AttendanceMember } from '../../lib/api';
-import { formatClock, formatDuration } from '../../lib/format';
+import {
+  formatClock,
+  formatCurrency,
+  formatDuration,
+  formatNumber,
+} from '../../lib/format';
 import { useLang } from '../../lib/i18n';
 import { ROLE_LABEL_KEY, ROLE_TONE } from '../../lib/roles';
 
@@ -65,6 +70,28 @@ export default function AttendanceBoard({
               >
                 {t(ROLE_LABEL_KEY[member.role])}
               </p>
+              {member.late_minutes > 0 ? (
+                <p
+                  className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12px] font-semibold tabular-nums"
+                  style={{ color: 'var(--warning)' }}
+                >
+                  <span>
+                    {t('attendance.lateBy', {
+                      minutes: formatNumber(lang, member.late_minutes),
+                    })}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span>
+                    {t('attendance.deduction', {
+                      amount: formatCurrency(
+                        lang,
+                        member.deduction,
+                        day.rules.currency,
+                      ),
+                    })}
+                  </span>
+                </p>
+              ) : null}
             </div>
 
             <div className="hidden min-w-[104px] text-end text-[12px] tabular-nums text-ink-2 sm:block">

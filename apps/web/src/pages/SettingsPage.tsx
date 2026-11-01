@@ -22,6 +22,9 @@ type Draft = {
   currency: string;
   tax_rate: string;
   table_count: string;
+  shift_start: string;
+  grace_minutes: string;
+  deduction_per_minute: string;
 };
 
 function toDraft(settings: SettingsData): Draft {
@@ -32,6 +35,9 @@ function toDraft(settings: SettingsData): Draft {
     currency: settings.store.currency,
     tax_rate: String(settings.store.tax_rate),
     table_count: String(settings.service.table_count),
+    shift_start: settings.attendance.shift_start,
+    grace_minutes: String(settings.attendance.grace_minutes),
+    deduction_per_minute: String(settings.attendance.deduction_per_minute),
   };
 }
 
@@ -120,6 +126,8 @@ export default function SettingsPage() {
     const nameEn = draft.name_en.trim();
     const taxRate = Number(draft.tax_rate);
     const tableCount = Number(draft.table_count);
+    const graceMinutes = Number(draft.grace_minutes);
+    const deductionRate = Number(draft.deduction_per_minute);
 
     if (!nameAr || !nameEn) {
       setError(t('settings.required'));
@@ -136,6 +144,17 @@ export default function SettingsPage() {
       setError(t('settings.range'));
       return;
     }
+    if (
+      !Number.isInteger(graceMinutes) ||
+      graceMinutes < 0 ||
+      graceMinutes > 180 ||
+      !Number.isFinite(deductionRate) ||
+      deductionRate < 0 ||
+      deductionRate > 10000
+    ) {
+      setError(t('settings.lateRange'));
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -147,6 +166,9 @@ export default function SettingsPage() {
         currency: draft.currency,
         tax_rate: taxRate,
         table_count: tableCount,
+        shift_start: draft.shift_start,
+        grace_minutes: graceMinutes,
+        deduction_per_minute: deductionRate,
       });
       setSettings(next);
       setDraft(toDraft(next));
@@ -326,6 +348,60 @@ export default function SettingsPage() {
               </p>
             ) : null}
           </div>
+        </Section>
+
+        <Section
+          title={t('settings.attendance')}
+          hint={t('settings.attendanceHint')}
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Label text={t('settings.shiftStart')}>
+              <input
+                className="field tabular-nums"
+                dir="ltr"
+                type="time"
+                aria-label={t('settings.shiftStart')}
+                value={draft.shift_start}
+                onChange={(event) => update({ shift_start: event.target.value })}
+              />
+            </Label>
+            <Label text={t('settings.grace')}>
+              <input
+                className="field tabular-nums"
+                dir="ltr"
+                inputMode="numeric"
+                type="number"
+                min={0}
+                max={180}
+                aria-label={t('settings.grace')}
+                value={draft.grace_minutes}
+                onChange={(event) => update({ grace_minutes: event.target.value })}
+              />
+            </Label>
+            <Label text={t('settings.deduction')}>
+              <div className="relative">
+                <input
+                  className="field pe-14 tabular-nums"
+                  dir="ltr"
+                  inputMode="decimal"
+                  type="number"
+                  min={0}
+                  step="any"
+                  aria-label={t('settings.deduction')}
+                  value={draft.deduction_per_minute}
+                  onChange={(event) =>
+                    update({ deduction_per_minute: event.target.value })
+                  }
+                />
+                <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-[13px] text-ink-2">
+                  {draft.currency}
+                </span>
+              </div>
+            </Label>
+          </div>
+          <p className="mt-2 text-[12px] leading-relaxed text-ink-2">
+            {t('settings.lateHint')}
+          </p>
         </Section>
 
         <div className="sticky bottom-3 z-20 flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-2.5 shadow-lg">

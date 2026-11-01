@@ -9,7 +9,7 @@ Run inside the api container:
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -76,7 +76,21 @@ def test_day_board_reads_the_roster(client):
     assert body["date"] == date.today().isoformat()
     assert body["is_today"] is True
     assert body["members"], "the seeded roster should be on the board"
-    assert set(body["summary"]) == {"on_shift", "checked_in", "minutes", "members"}
+    assert set(body["summary"]) == {
+        "on_shift",
+        "checked_in",
+        "minutes",
+        "members",
+        "late_count",
+        "late_minutes",
+        "deduction",
+    }
+    assert set(body["rules"]) == {
+        "shift_start",
+        "grace_minutes",
+        "deduction_per_minute",
+        "currency",
+    }
     assert body["summary"]["on_shift"] <= body["summary"]["members"]
     # The platform owner runs the platform, not a shift.
     assert body["me"] is None
@@ -149,6 +163,52 @@ def test_staff_clock_themselves_but_not_a_teammate(own_session, attendee):
     assert find(own.json(), attendee.id)["status"] == "in"
     # The refused punch wrote nothing for the teammate.
     assert find(own.json(), teammate["id"])["status"] != "in"
+
+
+def test_late_minutes_cut_the_salary(client, attendee):
+    """The rule is the store's: a late arrival is priced per minute, derived."""
+    saved_rule = client.get("/api/settings").json()["attendance"]
+    arrival = find(
+        client.post("/api/attendance/check-in", json={"staff_id": attendee.id}).json(),
+        attendee.id,
+    )
+    arrived = datetime.fromisoformat(arrival["checked_in_at"])
+    # Half an hour before this arrival, five minutes of grace, two pounds a
+    # minute: twenty-five late minutes and fifty off the salary.
+    start = arrived - timedelta(minutes=30)
+    if start.date() != arrived.date():
+        pytest.skip("the check-in is too close to midnight for this rule")
+
+    try:
+        saved = client.patch(
+            "/api/settings",
+            json={
+                "shift_start": start.strftime("%H:%M"),
+                "grace_minutes": 5,
+                "deduction_per_minute": 2,
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["attendance"]["shift_start"] == start.strftime("%H:%M")
+
+        board = client.get("/api/attendance").json()
+        row = find(board, attendee.id)
+        assert row["late_minutes"] == 25
+        assert row["deduction"] == 50
+        assert board["summary"]["late_count"] >= 1
+        assert board["summary"]["deduction"] >= 50
+
+        # Inside the grace window nobody is late at all.
+        late_rule = client.patch(
+            "/api/settings",
+            json={"shift_start": arrived.strftime("%H:%M"), "grace_minutes": 30},
+        )
+        assert late_rule.status_code == 200, late_rule.text
+        assert find(client.get("/api/attendance").json(), attendee.id)[
+            "late_minutes"
+        ] == 0
+    finally:
+        client.patch("/api/settings", json=saved_rule)
 
 
 def test_bad_date_is_rejected(client):

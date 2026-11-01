@@ -537,11 +537,22 @@ export type AttendanceMember = {
   open_since: string | null;
   minutes: number;
   shifts: number;
+  late_minutes: number;
+  deduction: number;
+};
+
+/** The store's lateness rule, as the attendance board reads it. */
+export type AttendanceRules = {
+  shift_start: string;
+  grace_minutes: number;
+  deduction_per_minute: number;
+  currency: string;
 };
 
 export type AttendanceDay = {
   date: string;
   is_today: boolean;
+  rules: AttendanceRules;
   me: AttendanceMember | null;
   members: AttendanceMember[];
   summary: {
@@ -549,6 +560,9 @@ export type AttendanceDay = {
     checked_in: number;
     minutes: number;
     members: number;
+    late_count: number;
+    late_minutes: number;
+    deduction: number;
   };
 };
 
@@ -572,6 +586,11 @@ export type SettingsData = {
     plan: string;
   };
   service: { table_count: number; open_tables: number };
+  attendance: {
+    shift_start: string;
+    grace_minutes: number;
+    deduction_per_minute: number;
+  };
 };
 
 export type SettingsInput = {
@@ -581,6 +600,9 @@ export type SettingsInput = {
   currency: string;
   tax_rate: number;
   table_count: number;
+  shift_start: string;
+  grace_minutes: number;
+  deduction_per_minute: number;
 };
 
 export type LoyaltyTier = 'bronze' | 'silver' | 'gold';

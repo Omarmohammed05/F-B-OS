@@ -37,6 +37,11 @@ class Tenant(Base):
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     # Set when the owner removes a restaurant but keeps its history for the books.
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When the shift starts ("HH:MM", empty when no rule is set), how long a
+    # late arrival is forgiven, and what one late minute costs the salary.
+    shift_start: Mapped[str] = mapped_column(String(5), default="")
+    shift_grace_minutes: Mapped[int] = mapped_column(Integer, default=10)
+    late_deduction_rate: Mapped[float] = mapped_column(Float, default=0)
 
 
 class Branch(Base):

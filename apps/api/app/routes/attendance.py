@@ -8,9 +8,13 @@ the closing timestamp of the row that was opened.
 
 Anyone signed in punches their own clock. A manager, an admin or the owner may
 punch for somebody on the same team, exactly like the checklist board.
+
+Lateness is derived per request from `tenants.shift_start` + the grace window:
+the day's first arrival past that moment is late, and every late minute costs
+`late_deduction_rate`. Nothing is stored, so editing the rule reprices the day.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -49,12 +53,39 @@ def minutes_of(rows: list[AttendanceShift], now: datetime) -> int:
     return total
 
 
+def rules_of(tenant: Tenant) -> dict:
+    """The store's lateness rule: when the shift starts and what a minute costs."""
+    return {
+        "shift_start": tenant.shift_start,
+        "grace_minutes": tenant.shift_grace_minutes,
+        "deduction_per_minute": tenant.late_deduction_rate,
+        "currency": tenant.currency,
+    }
+
+
+def late_minutes_of(rows: list[AttendanceShift], rules: dict) -> int:
+    """Minutes past shift start + grace, measured on the day's first arrival.
+
+    A split shift is late once — the second arrival of the day does not count
+    again — and no rule, no arrival or an arrival inside the grace window is 0.
+    """
+    start = rules["shift_start"]
+    if not start or not rows:
+        return 0
+    hour, minute = (int(part) for part in start.split(":"))
+    first = min(row.checked_in_at for row in rows)
+    due = first.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    due += timedelta(minutes=max(0, rules["grace_minutes"]))
+    return max(0, int((first - due).total_seconds() // 60))
+
+
 def serialize_member(
-    member: Staff, rows: list[AttendanceShift], now: datetime
+    member: Staff, rows: list[AttendanceShift], now: datetime, rules: dict
 ) -> dict:
     rows = sorted(rows, key=lambda row: row.checked_in_at)
     opened = next((row for row in rows if row.checked_out_at is None), None)
     closed = [row for row in rows if row.checked_out_at is not None]
+    late = late_minutes_of(rows, rules)
     return {
         "id": member.id,
         "name": member.name,
@@ -70,6 +101,9 @@ def serialize_member(
         "open_since": opened.checked_in_at.isoformat() if opened else None,
         "minutes": minutes_of(rows, now),
         "shifts": len(rows),
+        # Lateness today and what it takes off the salary, both derived.
+        "late_minutes": late,
+        "deduction": round(late * rules["deduction_per_minute"], 2),
     }
 
 
@@ -110,14 +144,16 @@ def day_payload(db: Session, tenant: Tenant, work_date: date, viewer: Staff) -> 
         if gone is not None:
             known[staff_id] = gone
 
+    rules = rules_of(tenant)
     members = [
-        serialize_member(member, by_staff.get(member.id, []), now)
+        serialize_member(member, by_staff.get(member.id, []), now, rules)
         for member in sorted(known.values(), key=lambda row: row.id)
     ]
 
     return {
         "date": work_date.isoformat(),
         "is_today": work_date == date.today(),
+        "rules": rules,
         "me": next((row for row in members if row["id"] == viewer.id), None),
         "members": members,
         "summary": {
@@ -125,6 +161,9 @@ def day_payload(db: Session, tenant: Tenant, work_date: date, viewer: Staff) -> 
             "checked_in": sum(1 for row in members if row["status"] != "none"),
             "minutes": sum(row["minutes"] for row in members),
             "members": len(members),
+            "late_count": sum(1 for row in members if row["late_minutes"] > 0),
+            "late_minutes": sum(row["late_minutes"] for row in members),
+            "deduction": round(sum(row["deduction"] for row in members), 2),
         },
     }
 

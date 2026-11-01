@@ -42,6 +42,11 @@ ADDITIVE_COLUMNS = [
     ("tenants", "is_deleted", "BOOLEAN NOT NULL DEFAULT FALSE"),
     # Delivery tickets carry the address the driver goes to.
     ("orders", "delivery_address", "VARCHAR(200) NOT NULL DEFAULT ''"),
+    # Attendance: the shift start, the grace window and the late-minute rate the
+    # salary is cut by. An empty shift_start means no lateness rule at all.
+    ("tenants", "shift_start", "VARCHAR(5) NOT NULL DEFAULT ''"),
+    ("tenants", "shift_grace_minutes", "INTEGER NOT NULL DEFAULT 10"),
+    ("tenants", "late_deduction_rate", "DOUBLE PRECISION NOT NULL DEFAULT 0"),
 ]
 
 ADDITIVE_INDEXES = [
