@@ -15,6 +15,7 @@ from .. import audit, auth
 from ..db import get_db
 from ..deps import active_branch, current_tenant
 from ..models import Branch, Order, Staff, Tenant
+from ..security import new_token
 
 router = APIRouter(prefix="/api/branches", tags=["branches"])
 
@@ -111,6 +112,8 @@ def create_branch(
         name_en=name_en,
         address=payload.address.strip(),
         phone=payload.phone.strip(),
+        # Its QR menu link works from the moment the branch exists.
+        menu_token=new_token(),
     )
     db.add(branch)
     db.flush()

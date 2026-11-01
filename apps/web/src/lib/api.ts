@@ -274,6 +274,54 @@ export type OrderInput = {
   items: { product_id: number; qty: number }[];
 };
 
+/** What the QR stand screen needs: the link this branch prints. */
+export type QrMenuData = {
+  token: string;
+  path: string;
+  store: { name_ar: string; name_en: string };
+  branch: { id: number; name_ar: string; name_en: string };
+  tables: number;
+};
+
+/** The guest's own view of the menu: names, emoji, prices — never a cost. */
+export type PublicMenuProduct = {
+  id: number;
+  category_id: number;
+  name_ar: string;
+  name_en: string;
+  emoji: string;
+  price: number;
+};
+
+export type PublicMenuData = {
+  store: {
+    name_ar: string;
+    name_en: string;
+    currency: string;
+    tax_rate: number;
+    default_language: string;
+    accent_color: string;
+  };
+  branch: { id: number; name_ar: string; name_en: string; address: string };
+  categories: { id: number; name_ar: string; name_en: string; emoji: string }[];
+  products: PublicMenuProduct[];
+};
+
+export type PublicOrderInput = {
+  table_no: number | null;
+  guest_name: string;
+  note: string;
+  items: { product_id: number; qty: number }[];
+};
+
+export type PublicOrderReceipt = {
+  number: string;
+  channel: OrderChannel;
+  table_no: number | null;
+  total: number;
+  item_count: number;
+};
+
 export type Customer = {
   id: number;
   name: string;
@@ -802,6 +850,7 @@ export const api = {
     }),
 
   menu: () => request<MenuData>('/api/menu'),
+  qrMenu: () => request<QrMenuData>('/api/menu/qr'),
   createCategory: (body: CategoryInput) =>
     request<MenuData>('/api/menu/categories', {
       method: 'POST',
@@ -1028,6 +1077,19 @@ export const api = {
   updateLoyaltyProgram: (body: Partial<LoyaltyProgram>) =>
     request<LoyaltyData>('/api/loyalty/program', {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+};
+
+/**
+ * The guest's side of the menu. No session, so these calls sit apart from the
+ * signed-in client above; the branch token in the link is the only credential.
+ */
+export const publicMenuApi = {
+  menu: (token: string) => request<PublicMenuData>(`/api/public/menu/${token}`),
+  order: (token: string, body: PublicOrderInput) =>
+    request<PublicOrderReceipt>(`/api/public/menu/${token}/orders`, {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
 };

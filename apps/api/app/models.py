@@ -56,6 +56,9 @@ class Branch(Base):
     address: Mapped[str] = mapped_column(String(160), default="")
     phone: Mapped[str] = mapped_column(String(40), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The public handle behind this branch's QR menu link. Anyone holding it can
+    # read the menu and send an order, so it is random instead of an id.
+    menu_token: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

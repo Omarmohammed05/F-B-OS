@@ -31,7 +31,7 @@ _ITERATIONS = 240_000
 # or clear one, and the activation link a new restaurant's admin opens before
 # they have an account.
 PUBLIC_PATHS = ("/api/health", "/api/auth/login", "/api/auth/logout")
-PUBLIC_PREFIXES = ("/api/invites/",)
+PUBLIC_PREFIXES = ("/api/invites/", "/api/public/")
 
 # Who may manage accounts, the store profile and the menu of people's access:
 # a restaurant's own admin, and the platform owner above them.

@@ -183,27 +183,37 @@ def existing_for_key(db: Session, tenant: Tenant, key: str) -> Order | None:
     return None
 
 
-@router.post("", status_code=201)
-def create_order(
-    payload: OrderIn, request: Request, db: Session = Depends(get_db)
-):
-    tenant = current_tenant(db)
-
-    # A tablet that loses its reply and retries presents the same key: answer
-    # with the ticket it already has instead of charging the guest twice.
-    idem_key = (request.headers.get("idempotency-key") or "").strip()
-    if len(idem_key) > 64:
-        raise HTTPException(status_code=400, detail="Idempotency-Key is too long.")
-    repeated = existing_for_key(db, tenant, idem_key)
-    if repeated is not None:
-        return serialize_one(db, repeated)
-
-    if payload.channel == "dine_in" and payload.table_no is None:
-        raise HTTPException(status_code=400, detail="Choose a table for dine-in orders.")
-
+def quantities_of(lines: list[OrderItemIn]) -> dict[int, int]:
+    """One running quantity per product, so two lines of the same plate merge."""
     quantities: dict[int, int] = defaultdict(int)
-    for line in payload.items:
+    for line in lines:
         quantities[line.product_id] += line.qty
+    return quantities
+
+
+def place_order(
+    db: Session,
+    tenant: Tenant,
+    *,
+    branch_id: int,
+    channel: str,
+    table_no: int | None,
+    quantities: dict[int, int],
+    customer_id: int = 0,
+    customer_name: str = "",
+    delivery_address: str = "",
+    payment_method: str | None = None,
+    note: str = "",
+    idempotency_key: str = "",
+) -> tuple[Order, list[OrderItem]]:
+    """Write one ticket, priced from the menu and the store's tax rate.
+
+    The counter and the guest's QR menu both land here, so a ticket is built in
+    exactly one place: whatever a channel adds, it never invents its own prices
+    and never skips the availability check.
+    """
+    if channel == "dine_in" and table_no is None:
+        raise HTTPException(status_code=400, detail="Choose a table for dine-in orders.")
 
     products = {
         product.id: product
@@ -223,27 +233,23 @@ def create_order(
             detail=f"Not available right now: {', '.join(unavailable)}.",
         )
 
-    customer = resolve_customer(
-        db, tenant, payload.customer_id, payload.customer_name
-    )
+    customer = resolve_customer(db, tenant, customer_id, customer_name)
 
     highest = db.query(func.max(Order.id)).filter_by(tenant_id=tenant.id).scalar()
     order = Order(
         tenant_id=tenant.id,
         number=str(1001 + (highest or 0)),
-        # Rung up in the branch the counter is working in.
-        branch_id=active_branch_id(db, tenant),
+        # Rung up in the branch the ticket belongs to.
+        branch_id=branch_id,
         customer_id=customer.id if customer else 0,
-        channel=payload.channel,
-        table_no=payload.table_no if payload.channel == "dine_in" else None,
+        channel=channel,
+        table_no=table_no if channel == "dine_in" else None,
         customer_name=customer.name if customer else "",
-        delivery_address=(
-            payload.delivery_address.strip() if payload.channel == "delivery" else ""
-        ),
+        delivery_address=delivery_address.strip() if channel == "delivery" else "",
         status="new",
-        payment_method=payload.payment_method,
-        note=payload.note.strip(),
-        idempotency_key=idem_key,
+        payment_method=payment_method,
+        note=note.strip(),
+        idempotency_key=idempotency_key,
     )
 
     subtotal = 0.0
@@ -277,12 +283,44 @@ def create_order(
     except IntegrityError:
         # Two identical sends raced: the unique key kept one, so return that one.
         db.rollback()
-        winner = existing_for_key(db, tenant, idem_key)
+        winner = existing_for_key(db, tenant, idempotency_key)
         if winner is None:
             raise
-        return serialize_one(db, winner)
+        return winner, order_items(db, [winner.id]).get(winner.id, [])
     db.refresh(order)
 
+    return order, items
+
+
+@router.post("", status_code=201)
+def create_order(
+    payload: OrderIn, request: Request, db: Session = Depends(get_db)
+):
+    tenant = current_tenant(db)
+
+    # A tablet that loses its reply and retries presents the same key: answer
+    # with the ticket it already has instead of charging the guest twice.
+    idem_key = (request.headers.get("idempotency-key") or "").strip()
+    if len(idem_key) > 64:
+        raise HTTPException(status_code=400, detail="Idempotency-Key is too long.")
+    repeated = existing_for_key(db, tenant, idem_key)
+    if repeated is not None:
+        return serialize_one(db, repeated)
+
+    order, items = place_order(
+        db,
+        tenant,
+        branch_id=active_branch_id(db, tenant),
+        channel=payload.channel,
+        table_no=payload.table_no,
+        quantities=quantities_of(payload.items),
+        customer_id=payload.customer_id,
+        customer_name=payload.customer_name,
+        delivery_address=payload.delivery_address,
+        payment_method=payload.payment_method,
+        note=payload.note,
+        idempotency_key=idem_key,
+    )
     return serialize_order(order, items)
 
 

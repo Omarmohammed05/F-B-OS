@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   LayoutDashboard,
   Monitor,
+  QrCode,
   ReceiptText,
   SlidersHorizontal,
   Sparkles,
@@ -54,6 +55,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/pos', labelKey: 'nav.pos', icon: Monitor },
       { to: '/orders', labelKey: 'nav.orders', icon: ReceiptText },
       { to: '/menu', labelKey: 'nav.menu', icon: UtensilsCrossed },
+      { to: '/qr-menu', labelKey: 'nav.qrMenu', icon: QrCode },
     ],
   },
   {

@@ -55,6 +55,8 @@ ADDITIVE_COLUMNS = [
     # Branches: the location a member of staff works in. 0 is the store itself
     # (the admin and the platform owner sit above every branch).
     ("staff", "branch_id", "INTEGER NOT NULL DEFAULT 0"),
+    # QR menu: the public handle this branch's table stands point at.
+    ("branches", "menu_token", "VARCHAR(32) NOT NULL DEFAULT ''"),
 ]
 
 ADDITIVE_INDEXES = [
@@ -65,6 +67,9 @@ ADDITIVE_INDEXES = [
     " ON orders (tenant_id, idempotency_key) WHERE idempotency_key <> ''",
     "CREATE INDEX IF NOT EXISTS ix_orders_branch_id ON orders (branch_id)",
     "CREATE INDEX IF NOT EXISTS ix_staff_branch_id ON staff (branch_id)",
+    # One branch per QR link: a guest's scan resolves to exactly one menu.
+    "CREATE UNIQUE INDEX IF NOT EXISTS ux_branches_menu_token"
+    " ON branches (menu_token) WHERE menu_token <> ''",
     # One account name per store; roster entries without a login are exempt.
     "CREATE UNIQUE INDEX IF NOT EXISTS ux_staff_username"
     " ON staff (tenant_id, username) WHERE username <> ''",
@@ -86,6 +91,10 @@ BRANCH_BACKFILL = """
 BACKFILLS = [
     "UPDATE customers SET qr_token = md5(random()::text || id::text)"
     " WHERE qr_token = ''",
+    # A branch that predates the QR menu gets its public handle, so its stands
+    # can be printed without opening the screen first.
+    "UPDATE branches SET menu_token = md5(random()::text || id::text)"
+    " WHERE menu_token = ''",
     # Staff hired before branches existed work in the store's active location.
     # Store-level roles (admin, owner) stay 0 on purpose: they are above every
     # branch, so they show in each one's roster.

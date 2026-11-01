@@ -31,6 +31,7 @@ curl -s localhost:3000/api/dashboard | head -c 200        # proxied API through 
 curl -s localhost:3000/api/menu | head -c 200             # menu + computed recipe cost
 curl -s localhost:3000/api/ingredients | head -c 200      # ingredient catalog
 curl -s localhost:3000/api/pos | head -c 200              # what the POS can sell
+curl -s localhost:3000/api/menu/qr | head -c 200          # this branch's QR menu link
 curl -s localhost:3000/api/orders | head -c 200           # live tickets
 curl -s localhost:3000/api/customers | head -c 200        # guest book + derived stats
 curl -s "localhost:3000/api/reports?days=7" | head -c 200 # sales / food cost
@@ -616,6 +617,46 @@ service.
   `test_branch_can_be_added_listed_and_switched` fail at "switching back brings the
   store's own tickets back" — every seeded ticket lives in Qahwa House, so pick it
   in the switcher and delete the stray one.
+
+## QR menu (guest ordering)
+
+- One public link per branch: `branches.menu_token` (additive column in `db.py`
+  **and** `models.py`, unique partial index `ux_branches_menu_token`, backfilled in
+  `BACKFILLS`), so a stand printed today keeps working after a restart. The menu
+  is `/m/<token>`; a table stand is `/m/<token>?table=N`.
+- `/api/public/` is public in `auth.PUBLIC_PREFIXES`, next to `/api/invites/`:
+  `GET /api/public/menu/{token}` (store, branch, active categories and available
+  products only — no cost, margin or recipe) and
+  `POST /api/public/menu/{token}/orders` (201 with `number, channel, table_no,
+  total, item_count`). Their budgets live in `security.RULES` (120/min per caller
+  to read, 20/min to order), because a link on a table is a public endpoint.
+- A guest's ticket goes through the same `orders.place_order()` the till uses, so
+  prices, tax, the availability check and the `number` sequence have one
+  implementation. With a table it is a `dine_in` ticket on that table; without one
+  it is `takeaway`. Nothing is paid online — `payment_method` stays empty and the
+  guest pays at the counter. `note` starts with `QR menu`, so the order detail
+  sheet says where the ticket came from. A named guest lands in the guest book
+  exactly like a POS walk-in.
+- Staff side: `GET /api/menu/qr` mints the branch token on first read and answers
+  `{token, path, store, branch, tables}`; `tables` is `deps.table_count`
+  (`daily_metrics.total_tables`, 12 when unset — the same number the POS picker
+  shows). A new branch (API or seed) gets its token immediately.
+- UI: `/qr-menu` (`pages/QrMenuPage.tsx`, main nav) picks a table, shows the link
+  and renders the stand (`components/qr/MenuStand.tsx`), whose QR is drawn in the
+  browser by the `qrcode` package (`QRCode.toString(type: 'svg')`, with
+  `@types/qrcode`). `window.print()` puts only the stand on paper — the
+  `@media print` block in `index.css` hides everything else and forces dark ink on
+  white, so the stand prints legibly in dark mode too.
+- The guest page `/m/:token` (`pages/PublicMenuPage.tsx`) renders outside the shell
+  with no session, follows the store's `default_language` and accent colour, and
+  shows subtotal / `tax_rate` / total before sending. An unknown token or a
+  blocked/removed restaurant answers **404** and the page says the link is not
+  active.
+- Verify: sign in and read the link from `/api/menu/qr`, then call
+  `curl -s localhost:3000/api/public/menu/<token>` with **no** cookie. Place a
+  guest order from the page or curl, check it on `/orders`, then delete that
+  ticket (its items first) and the guest profile it created. Tests:
+  `apps/api/tests/test_public_menu.py` (6 checks, run with no session).
 
 ## Staff, branches and the roster
 

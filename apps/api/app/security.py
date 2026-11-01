@@ -72,6 +72,10 @@ RULES: tuple[Rule, ...] = (
     Rule(("GET",), r"^/api/loyalty/cards/(?P<card>\d+)/wallet-link$", 5, 3600, by_card=True),
     Rule(("GET",), r"^/api/reports/export\.csv$", 5, 3600),
     Rule(("POST",), r"^/api/orders$", 120, 60),
+    # A guest at a table sends a few tickets, never a burst: the QR menu is
+    # public, so reading it and ordering from it carry their own budgets.
+    Rule(("GET",), r"^/api/public/menu/[0-9a-f]{32}$", 120, 60),
+    Rule(("POST",), r"^/api/public/menu/[0-9a-f]{32}/orders$", 20, 60),
     Rule(("POST", "PATCH", "PUT", "DELETE"), r"^/api/", 300, 60),
 )
 

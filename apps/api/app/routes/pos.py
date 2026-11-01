@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import current_tenant
-from ..models import DailyMetric
+from ..deps import current_tenant, table_count
 from .menu import serialize_menu
 
 router = APIRouter(prefix="/api/pos", tags=["pos"])
@@ -23,12 +22,9 @@ def pos_catalog(db: Session = Depends(get_db)):
         if product["is_available"] and product["category_id"] in active_ids
     ]
 
-    metrics = db.query(DailyMetric).filter_by(tenant_id=tenant.id).first()
-    table_count = metrics.total_tables if metrics and metrics.total_tables else 12
-
     return {
         "categories": categories,
         "products": products,
         "tax_rate": tenant.tax_rate,
-        "table_count": table_count,
+        "table_count": table_count(db, tenant),
     }

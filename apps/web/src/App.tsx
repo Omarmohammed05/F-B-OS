@@ -20,6 +20,8 @@ import OnboardingPage from './pages/OnboardingPage';
 import OrdersPage from './pages/OrdersPage';
 import PlatformPage from './pages/PlatformPage';
 import PosPage from './pages/PosPage';
+import PublicMenuPage from './pages/PublicMenuPage';
+import QrMenuPage from './pages/QrMenuPage';
 import RecipePage from './pages/RecipePage';
 import ReportsPage from './pages/ReportsPage';
 import RestaurantsPage from './pages/RestaurantsPage';
@@ -43,6 +45,8 @@ export default function App() {
         <Route path="login" element={<LoginPage />} />
         {/* A restaurant's activation link: no session yet, that is the point. */}
         <Route path="activate/:token" element={<ActivatePage />} />
+        {/* The stand on the table: a guest's menu, no account of any kind. */}
+        <Route path="m/:token" element={<PublicMenuPage />} />
 
         <Route element={<RequireAuth />}>
           <Route path="onboarding" element={<OnboardingPage />} />
@@ -83,6 +87,7 @@ export default function App() {
             <Route path="pos" element={<PosPage />} />
             <Route path="orders" element={<OrdersPage />} />
             <Route path="menu" element={<MenuPage />} />
+            <Route path="qr-menu" element={<QrMenuPage />} />
             <Route path="menu/:productId/recipe" element={<RecipePage />} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="customers" element={<CustomersPage />} />

@@ -192,3 +192,37 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A printed QR stand is the only thing on the sheet: the app behind it, the
+   controls and the sidebar never reach paper. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .qr-stand,
+  .qr-stand * {
+    visibility: visible;
+  }
+
+  .qr-stand {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    border: 0;
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  .qr-stand,
+  .qr-stand * {
+    color: #111111 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

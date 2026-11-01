@@ -3,7 +3,7 @@ from contextvars import ContextVar
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from .models import Branch, Tenant
+from .models import Branch, DailyMetric, Tenant
 
 # The restaurant the caller signed in for. `auth.SessionGate` fills it on every
 # authenticated request; outside a request (seed, tests) it stays empty and
@@ -78,3 +78,13 @@ def active_branch_id(db: Session, tenant: Tenant) -> int:
     """
     branch = active_branch(db, tenant)
     return branch.id if branch else 0
+
+
+def table_count(db: Session, tenant: Tenant) -> int:
+    """How many tables the store has — the number the POS picker offers.
+
+    It lives on `daily_metrics`, and 12 is the same fallback the POS uses for a
+    store that never set one, so a QR stand and the till agree on the floor.
+    """
+    metrics = db.query(DailyMetric).filter_by(tenant_id=tenant.id).first()
+    return metrics.total_tables if metrics and metrics.total_tables else 12

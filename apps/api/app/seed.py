@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 
 from .auth import hash_password
 from .db import Base, SessionLocal, engine, ensure_columns
+from .security import new_token
 from .models import (
     ActivityRow,
     AttendanceShift,
@@ -266,6 +267,8 @@ def seed() -> None:
                 name_ar=tenant.name_ar,
                 name_en=tenant.name_en,
                 address="",
+                # The store's QR menu link exists from the first boot.
+                menu_token=new_token(),
             )
             db.add(branch)
             db.flush()

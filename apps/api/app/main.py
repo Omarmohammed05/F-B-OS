@@ -26,6 +26,7 @@ from .routes import notifications as notification_routes
 from .routes import orders as order_routes
 from .routes import platform as platform_routes
 from .routes import pos as pos_routes
+from .routes import public_menu as public_menu_routes
 from .routes import reports as report_routes
 from .routes import settings as setting_routes
 from .routes import team as team_routes
@@ -74,6 +75,7 @@ app.include_router(menu_routes.router)
 app.include_router(inventory_routes.router)
 app.include_router(pos_routes.router)
 app.include_router(order_routes.router)
+app.include_router(public_menu_routes.router)
 app.include_router(customer_routes.router)
 app.include_router(loyalty_routes.router)
 app.include_router(report_routes.router)

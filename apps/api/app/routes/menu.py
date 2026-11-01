@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from .. import audit
 from ..auth import current_user, guard_cost, require_cost
 from ..db import get_db
-from ..deps import current_tenant, sees_cost
+from ..deps import active_branch, current_tenant, sees_cost, table_count
 from ..models import Ingredient, MenuCategory, Product, RecipeLine, Staff, Tenant
-from ..security import client_host
+from ..security import client_host, new_token
 
 router = APIRouter(prefix="/api/menu", tags=["menu"])
 
@@ -234,6 +234,37 @@ class RecipeIn(BaseModel):
 @router.get("")
 def get_menu(db: Session = Depends(get_db)):
     return serialize_menu(db, current_tenant(db))
+
+
+@router.get("/qr")
+def qr_menu(
+    user: Staff = Depends(current_user), db: Session = Depends(get_db)
+):
+    """The public link this branch's table stands carry.
+
+    The token is minted on first read, so a store that predates the QR menu
+    never has to do anything to get one.
+    """
+    tenant = current_tenant(db)
+    branch = active_branch(db, tenant)
+    if branch is None:
+        raise HTTPException(
+            status_code=409, detail="Add a branch before printing a menu stand."
+        )
+    if not branch.menu_token:
+        branch.menu_token = new_token()
+        db.commit()
+    return {
+        "token": branch.menu_token,
+        "path": f"/m/{branch.menu_token}",
+        "store": {"name_ar": tenant.name_ar, "name_en": tenant.name_en},
+        "branch": {
+            "id": branch.id,
+            "name_ar": branch.name_ar,
+            "name_en": branch.name_en,
+        },
+        "tables": table_count(db, tenant),
+    }
 
 
 @router.post("/categories", status_code=201)
