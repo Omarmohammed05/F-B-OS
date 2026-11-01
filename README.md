@@ -115,9 +115,9 @@ docker compose -f docker-compose.base44.yml logs -f api
 
 One Vercel project with two **services** from this repository — the API and the
 SPA — sharing one Postgres database. The root `vercel.json` declares them and
-routes `/api/*` and `/docs` to the `api` service and every other path to the
-`web` service, so the browser stays on a single origin and the session cookie
-keeps working.
+routes `/api/*` and `/docs` to the `sufra-api` service and every other path to
+the `sufra-web` service, so the browser stays on a single origin and the session
+cookie keeps working.
 
 The full from-scratch runbook — the services, every environment variable, the
 owner account and troubleshooting — is in [`DEPLOY.md`](DEPLOY.md).
@@ -127,10 +127,10 @@ owner account and troubleshooting — is in [`DEPLOY.md`](DEPLOY.md).
    `postgresql+psycopg2://USER:PASSWORD@HOST/DB?sslmode=require`.
 
 2. **The project.** Import this repository with the **repository root** as the
-   Root Directory. The root `vercel.json` declares both services — `api`
-   (`apps/api`, framework `fastapi`) and `web` (`apps/web`, framework `vite`) —
-   plus the top-level rewrites that publish them. Environment variables (set
-   on the project; the `api` service is their only reader):
+   Root Directory. The root `vercel.json` declares both services — `sufra-api`
+   (`apps/api`, framework `fastapi`) and `sufra-web` (`apps/web`, framework
+   `vite`) — plus the top-level rewrites that publish them. Environment
+   variables (set on the project; `sufra-api` is their only reader):
 
    | Name | Value |
    | --- | --- |

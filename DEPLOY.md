@@ -5,19 +5,22 @@ One Vercel project with two **services**, plus one Postgres database. The root
 
 | Service | Root directory | Framework | What it is | Public paths |
 | --- | --- | --- | --- | --- |
-| `api` | `apps/api` | `fastapi` | the whole FastAPI app (`app/main.py`) | `/api/*`, `/docs`, `/openapi.json` |
-| `web` | `apps/web` | `vite` | the SPA (`npm run build` → `dist`) | every other path |
+| `sufra-api` | `apps/api` | `fastapi` | the whole FastAPI app (`app/main.py`) | `/api/*`, `/docs`, `/openapi.json` |
+| `sufra-web` | `apps/web` | `vite` | the SPA (`npm run build` → `dist`) | every other path |
 
 A service is internal until a top-level rewrite publishes it, and the rewrites
 are what put both on the project's one domain. The browser therefore
 only ever talks to one origin, and that single origin is what keeps the session
 cookie working — there is no separate API domain to point anywhere.
 
-There are **no service bindings**: nothing on the server calls the other service.
-The SPA's `/api/...` calls are relative (`apps/web/src/lib/api.ts`), so they go
-out to the same origin and the top-level `rewrites` hand them to the `api`
-service, which receives the original path (`/api/dashboard` stays
-`/api/dashboard`).
+There are **no service bindings**, and none are needed. A binding exists so
+server-side code can call another service privately, and it is only readable from
+a function at runtime. `sufra-web` is a static Vite build with no functions, and
+`sufra-api` calls nothing: the SPA's `/api/...` calls are relative
+(`apps/web/src/lib/api.ts`), so they go out to the same origin and the top-level
+`rewrites` hand them to `sufra-api`, which receives the original path
+(`/api/dashboard` stays `/api/dashboard`). Add a `bindings` entry on `sufra-web`
+only if server-side web code ever has to reach the API.
 
 You need: this repository on GitHub, a Vercel account, a Postgres database, and
 either Docker or Python 3 once (step 3 creates your owner account).
@@ -48,13 +51,13 @@ idempotently, by the API's cold start.
 1. Vercel → **Add New → Project** → import this repository.
 2. **Root Directory**: the repository root — the directory that holds
    `vercel.json`. Vercel reads the `services` block from it and builds each
-   service on its own: `api` with the FastAPI preset from `apps/api`
-   (`requirements.txt`, entrypoint `app.main:app`), `web` with the Vite preset
-   from `apps/web` (`npm run build` → `dist`). Do not point the root directory at
-   `apps/api` or `apps/web`; that would drop the other service and the routing
-   with it.
+   service on its own: `sufra-api` with the FastAPI preset from `apps/api`
+   (`requirements.txt`, entrypoint `app.main:app`), `sufra-web` with the Vite
+   preset from `apps/web` (`npm run build` → `dist`). Do not point the root
+   directory at `apps/api` or `apps/web`; that would drop the other service and
+   the routing with it.
 3. **Environment Variables** (add each to *Production* and *Preview* — they reach
-   the `api` service, which is their only reader):
+   `sufra-api`, which is their only reader):
 
    | Name | Value | Required |
    | --- | --- | --- |
@@ -148,18 +151,18 @@ deployment host to fill in:
 
 ```jsonc
 "rewrites": [
-  { "source": "/api/(.*)",      "destination": { "service": "api" } },
-  { "source": "/docs",          "destination": { "service": "api" } },
-  { "source": "/openapi.json",  "destination": { "service": "api" } },
-  { "source": "/(.*)",          "destination": { "service": "web" } }
+  { "source": "/api/(.*)",      "destination": { "service": "sufra-api" } },
+  { "source": "/docs",          "destination": { "service": "sufra-api" } },
+  { "source": "/openapi.json",  "destination": { "service": "sufra-api" } },
+  { "source": "/(.*)",          "destination": { "service": "sufra-web" } }
 ]
 ```
 
 - Most specific first, catch-all last. `/api/(.*)` includes the public guest
   menu (`/api/public/...`) and the activation links (`/api/invites/...`).
 - `/docs` needs `/openapi.json` beside it, or Swagger UI loads its own spec from
-  the `web` service and shows an empty page.
-- The `web` service carries its own fallback rewrite
+  `sufra-web` and shows an empty page.
+- The `sufra-web` service carries its own fallback rewrite
   (`"/(.*)" → "/index.html"`), because every page of the SPA is a client route:
   a deep link such as `/orders` or `/m/<token>` has no file behind it.
 - `vercel dev` (or `vercel dev -L`, no login) runs both services locally with
@@ -191,15 +194,15 @@ deployment host to fill in:
 
 | Name | Service | Required | Used for |
 | --- | --- | --- | --- |
-| `DATABASE_URL` | `api` | **yes** | every request; SQLAlchemy form |
-| `GOOGLE_WALLET_ISSUER_ID` | `api` | no | Google Wallet passes; the loyalty page hides the button when it is missing |
-| `GOOGLE_WALLET_SERVICE_ACCOUNT` | `api` | no | the service-account key JSON (raw JSON, base64 or JSON wrapped in quotes all work) |
-| `GOOGLE_WALLET_LOGO_URL` | `api` | no | overrides the pass logo; defaults to a hosted asset |
+| `DATABASE_URL` | `sufra-api` | **yes** | every request; SQLAlchemy form |
+| `GOOGLE_WALLET_ISSUER_ID` | `sufra-api` | no | Google Wallet passes; the loyalty page hides the button when it is missing |
+| `GOOGLE_WALLET_SERVICE_ACCOUNT` | `sufra-api` | no | the service-account key JSON (raw JSON, base64 or JSON wrapped in quotes all work) |
+| `GOOGLE_WALLET_LOGO_URL` | `sufra-api` | no | overrides the pass logo; defaults to a hosted asset |
 | `SEED_DEMO_DATA` | — | never in production | demo menu, guests, tickets, roster; `1` only in the sandbox |
 | `SUFRA_OWNER_USERNAME` / `SUFRA_OWNER_PASSWORD` | — | seed-time only | the owner account in step 3 |
 
-The `web` service needs no variables: it is a static build whose only backend
-call is `/api/*` on its own origin.
+`sufra-web` needs no variables: it is a static build whose only backend call is
+`/api/*` on its own origin.
 
 ---
 
@@ -229,8 +232,8 @@ must load with no account).
 | Symptom | Cause |
 | --- | --- |
 | Every route 500, `/api/health` too | `DATABASE_URL` wrong: missing `+psycopg2`, missing `?sslmode=require`, or an unencoded character in the password |
-| Sign-in succeeds, then you bounce back to `/login` | `/api/*` is not reaching the `api` service on the page's own origin — check the top-level rewrites in `vercel.json` (most specific first, catch-all `/(.*)` last) |
-| A deep link such as `/orders` 404s | the `web` service's `"/(.*)" → "/index.html"` fallback rewrite is missing |
+| Sign-in succeeds, then you bounce back to `/login` | `/api/*` is not reaching `sufra-api` on the page's own origin — check the top-level rewrites in `vercel.json` (most specific first, catch-all `/(.*)` last) |
+| A deep link such as `/orders` 404s | `sufra-web`'s `"/(.*)" → "/index.html"` fallback rewrite is missing |
 | `/api/health` 404s but the build succeeded | Project Settings → Root Directory is not the repository root, so `vercel.json` and one of the services were never read |
 | `column "..." does not exist` after an update | a new model column needs `ADDITIVE_COLUMNS` in `apps/api/app/db.py` **and** a redeploy; the API applies it on cold start |
 | 429 on sign-in or orders | per-flow rate limits (`SECURITY.md`); the budget is per function instance — wait and retry |
