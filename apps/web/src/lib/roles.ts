@@ -39,6 +39,16 @@ export function canManageStore(role: StaffRole | undefined): boolean {
 }
 
 /**
+ * Who may see what a plate costs and move a price: the manager on shift and the
+ * people above them. The till and the pass ring up tickets, so their payloads
+ * arrive without cost or margin at all (`deps.sees_cost` on the API) — this is
+ * only what decides which controls render.
+ */
+export function canSeeCost(role: StaffRole | undefined): boolean {
+  return role === 'manager' || role === 'admin' || role === 'owner';
+}
+
+/**
  * Who may tick a teammate's checklist box and read the week/month report: the
  * manager on shift, and the admin or owner above them. Everyone else ticks
  * only their own list.

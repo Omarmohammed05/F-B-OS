@@ -416,12 +416,29 @@ service.
 - `SECURITY.md` is the checklist the plan asks for: every item marked done, not
   applicable (with the reason) or outstanding. Keep it current — the release gate
   at its end is the honest answer to "are we safe to launch".
-- **Sign-in exists (see the last section); roles do not gate fields yet.**
-  `deps.current_tenant` still resolves the store from the database, never from the
-  request, so no endpoint can be pointed at another store's data. Every `/api`
-  route now needs a session, but a cashier sees the same costs, margins and guest
-  book an owner does: per-role field hiding, PINs and blind close are the
-  remaining items.
+- **Money is hidden by role.** `deps.current_tenant` still resolves the store from
+  the database, never from the request, so no endpoint can be pointed at another
+  store's data; on top of that, `auth.SessionGate` stamps the signed-in **role**
+  into a context variable (`deps.set_request_role`) and the serializers ask
+  `deps.sees_cost()`. For `cashier` and `kitchen` those keys are **absent**, not
+  zeroed: `cost`/`margin`/`margin_pct` in `/api/menu` and `/api/pos` (and the
+  summary's `avg_margin_pct`), the recipe's `unit_cost`/`line_cost` and its
+  `totals.cost|margin|food_cost_pct`, `unit_cost` in `/api/ingredients`, and
+  `food_cost`/`gross_margin`/`gross_margin_pct`/`food_cost_pct` plus each daily
+  `food_cost` in `/api/reports` — the CSV export drops those columns too. Outside
+  a request (seed, tests, scripts) there is no role and cost is visible.
+- **The same roles own the writes.** `auth.require_cost` guards
+  `POST /api/menu/products`, `PUT /api/menu/products/{id}/recipe` and
+  `POST /api/ingredients`; `auth.guard_cost` runs inline in the two patches when
+  `price` / `unit_cost` actually changes, so a cashier keeps availability, stock
+  movements and par levels and gets **403** on money. The web side mirrors this
+  with `canSeeCost(role)` (`lib/roles.ts`): it hides the cost/margin chips, the
+  average-margin card, the ingredient unit-cost column, the report's food-cost
+  card and cost/margin rows, and the product/ingredient/cost controls; the recipe
+  page shows `menu.costHidden` instead of the plate cost and its save button.
+- Still outstanding: a manager PIN, blind close, and the lateness deduction on
+  `/api/attendance` (a shared-tablet surface, so one person's salary figure is
+  visible to the next — see SECURITY.md).
 - `apps/api/app/security.py` holds two things: the `Hardening` middleware (rate
   limits + response headers) and the small helpers `new_token()` (128-bit hex
   handle) and `client_host()`. Budgets are a tuple of `Rule`s; the first matching
@@ -447,7 +464,7 @@ service.
   touches empty values). The Wallet barcode and `accountId` use it instead of the
   customer id, and a pass carries no phone number or email.
 - Tests live in `apps/api/tests/` and run in the api container (`python -m pytest
-  tests -q`, 38 checks — the `python -m` form is the one that resolves the `app`
+  tests -q`, 52 checks — the `python -m` form is the one that resolves the `app`
   package; bare `pytest` fails with `ModuleNotFoundError: No module named 'app'`).
   They use the app's own database, so each one creates uniquely named
   rows and deletes exactly those again — the seeded store must be back at 8 orders,

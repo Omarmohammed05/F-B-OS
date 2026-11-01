@@ -7,8 +7,10 @@ import {
   type RecipeData,
   type RecipeLineInput,
 } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { formatCurrency, formatMoney, formatNumber } from '../lib/format';
 import { useLang, type TranslationKey } from '../lib/i18n';
+import { canSeeCost } from '../lib/roles';
 import { useAppData } from '../lib/store';
 
 type IngredientInfo = Pick<
@@ -33,6 +35,8 @@ export default function RecipePage() {
   const { productId } = useParams();
   const id = Number(productId);
   const { data } = useAppData();
+  const { user } = useAuth();
+  const showCost = canSeeCost(user?.role);
   const currency = data?.tenant.currency ?? 'EGP';
   const { t, lang } = useLang();
 
@@ -294,15 +298,17 @@ export default function RecipePage() {
                             ? ingredient.name_ar
                             : ingredient.name_en}
                         </p>
-                        <p className="text-[12px] tabular-nums text-ink-2">
-                          {formatMoney(
-                            lang,
-                            ingredient.unit_cost,
-                            currency,
-                            3,
-                          )}{' '}
-                          / {unitLabel}
-                        </p>
+                        {showCost ? (
+                          <p className="text-[12px] tabular-nums text-ink-2">
+                            {formatMoney(
+                              lang,
+                              ingredient.unit_cost ?? 0,
+                              currency,
+                              3,
+                            )}{' '}
+                            / {unitLabel}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <input
@@ -326,13 +332,15 @@ export default function RecipePage() {
                           {unitLabel}
                         </span>
                       </div>
-                      <span className="w-24 text-end text-[14px] font-semibold tabular-nums text-ink">
-                        {formatCurrency(
-                          lang,
-                          ingredient.unit_cost * line.qty,
-                          currency,
-                        )}
-                      </span>
+                      {showCost ? (
+                        <span className="w-24 text-end text-[14px] font-semibold tabular-nums text-ink">
+                          {formatCurrency(
+                            lang,
+                            (ingredient.unit_cost ?? 0) * line.qty,
+                            currency,
+                          )}
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => removeLine(line.ingredient_id)}
@@ -395,11 +403,18 @@ export default function RecipePage() {
                           ? ingredient.name_ar
                           : ingredient.name_en}
                       </p>
-                      <p className="text-[12px] tabular-nums text-ink-2">
-                        {formatMoney(lang, ingredient.unit_cost, currency, 3)}{' '}
-                        /{' '}
-                        {t(UNIT_KEY[ingredient.unit] ?? 'inv.units.pc')}
-                      </p>
+                      {showCost ? (
+                        <p className="text-[12px] tabular-nums text-ink-2">
+                          {formatMoney(
+                            lang,
+                            ingredient.unit_cost ?? 0,
+                            currency,
+                            3,
+                          )}{' '}
+                          /{' '}
+                          {t(UNIT_KEY[ingredient.unit] ?? 'inv.units.pc')}
+                        </p>
+                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -418,12 +433,18 @@ export default function RecipePage() {
 
         <aside>
           <div className="card p-5 lg:sticky lg:top-20">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-2">
-              {t('recipe.totalCost')}
-            </p>
-            <p className="mt-1 text-[32px] font-bold tabular-nums tracking-tight text-ink">
-              {formatCurrency(lang, totals.cost, currency)}
-            </p>
+            {showCost ? (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-2">
+                  {t('recipe.totalCost')}
+                </p>
+                <p className="mt-1 text-[32px] font-bold tabular-nums tracking-tight text-ink">
+                  {formatCurrency(lang, totals.cost, currency)}
+                </p>
+              </>
+            ) : (
+              <p className="text-[13px] text-ink-2">{t('menu.costHidden')}</p>
+            )}
 
             <dl className="mt-4 flex flex-col gap-2.5 text-[13px]">
               <div className="flex items-center justify-between gap-3">
@@ -432,41 +453,51 @@ export default function RecipePage() {
                   {formatCurrency(lang, totals.price, currency)}
                 </dd>
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-ink-2">{t('recipe.margin')}</dt>
-                <dd
-                  className="font-semibold tabular-nums"
-                  style={{
-                    color:
-                      totals.margin >= 0 ? 'var(--success)' : 'var(--danger)',
-                  }}
-                >
-                  {formatCurrency(lang, totals.margin, currency)}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-ink-2">{t('recipe.foodCost')}</dt>
-                <dd
-                  className="font-semibold tabular-nums"
-                  style={{ color: foodTone }}
-                >
-                  {formatNumber(lang, totals.foodCost, 1)}%
-                </dd>
-              </div>
+              {showCost ? (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-ink-2">{t('recipe.margin')}</dt>
+                    <dd
+                      className="font-semibold tabular-nums"
+                      style={{
+                        color:
+                          totals.margin >= 0
+                            ? 'var(--success)'
+                            : 'var(--danger)',
+                      }}
+                    >
+                      {formatCurrency(lang, totals.margin, currency)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <dt className="text-ink-2">{t('recipe.foodCost')}</dt>
+                    <dd
+                      className="font-semibold tabular-nums"
+                      style={{ color: foodTone }}
+                    >
+                      {formatNumber(lang, totals.foodCost, 1)}%
+                    </dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
 
-            <div className="mt-3">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{
-                    width: `${Math.min(100, (totals.foodCost / 60) * 100)}%`,
-                    background: foodTone,
-                  }}
-                />
+            {showCost ? (
+              <div className="mt-3">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.min(100, (totals.foodCost / 60) * 100)}%`,
+                      background: foodTone,
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 text-[12px] text-ink-2">
+                  {t('recipe.target')}
+                </p>
               </div>
-              <p className="mt-1.5 text-[12px] text-ink-2">{t('recipe.target')}</p>
-            </div>
+            ) : null}
 
             {saveError ? (
               <p className="mt-3 text-[13px] font-medium text-[color:var(--danger)]">
@@ -474,27 +505,31 @@ export default function RecipePage() {
               </p>
             ) : null}
 
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              className="btn-primary mt-4 w-full"
-            >
-              {saved ? (
-                <>
-                  <Check size={17} />
-                  {t('recipe.saved')}
-                </>
-              ) : saving ? (
-                t('menu.saving')
-              ) : (
-                t('recipe.save')
-              )}
-            </button>
-            {dirty && !saving ? (
-              <p className="mt-2 text-center text-[12px] text-ink-2">
-                {t('recipe.unsaved')}
-              </p>
+            {showCost ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || !dirty}
+                  className="btn-primary mt-4 w-full"
+                >
+                  {saved ? (
+                    <>
+                      <Check size={17} />
+                      {t('recipe.saved')}
+                    </>
+                  ) : saving ? (
+                    t('menu.saving')
+                  ) : (
+                    t('recipe.save')
+                  )}
+                </button>
+                {dirty && !saving ? (
+                  <p className="mt-2 text-center text-[12px] text-ink-2">
+                    {t('recipe.unsaved')}
+                  </p>
+                ) : null}
+              </>
             ) : null}
 
             <Link

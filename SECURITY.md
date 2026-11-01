@@ -29,10 +29,12 @@ that do not exist.
 
 **Staff sign-in exists** (`apps/api/app/auth.py`): every `/api` route except the
 health probe and the login/logout pair answers **401** without a live session
-cookie, so the app is no longer open to anyone who can reach it. What is still
-missing is *authorization inside* an authenticated session — a cashier sees the
-same costs, margins and guest book an owner does, because roles only gate account
-management today (see the gate table).
+cookie, so the app is no longer open to anyone who can reach it. Inside a session
+the role now decides two things: **money** (cost, margin and food cost are absent
+from a cashier's or kitchen's payload, and a price or unit cost may only be moved
+by a manager or above — `deps.sees_cost`, `auth.guard_cost` / `require_cost`) and
+**access** (team, settings, branches and the platform surface, see the gate
+table). Everything else still only needs *a* session.
 
 ## P0 — before launch
 
@@ -42,10 +44,10 @@ management today (see the gate table).
 | 3.1 `tenant_id` never trusted from the client | **Done.** No request schema has a `tenant_id` field; Pydantic drops unknown keys. |
 | 3.1 Every id is checked against the caller's store | **Done.** `get_order`, `get_product`, `get_category`, `get_ingredient`, `get_customer`, `get_staff`, `get_card` all filter by tenant and raise 404. |
 | 3.1 Guest-facing handles are random, not sequential | **Done.** `customers.qr_token` (128-bit hex) replaces the customer row id in the Wallet barcode and `accountId`; `db.py` backfills existing guests on boot. |
-| 3.2 Field-level security (hide cost/profit/cash from cashiers) | **Outstanding** — roles exist, but no payload is trimmed by role yet: a signed-in cashier sees the same costs, margins and guest book as an owner. |
+| 3.2 Field-level security (hide cost/profit/cash from cashiers) | **Done for money.** `deps.sees_cost()` (role stamped by `auth.SessionGate`) drops `cost`/`margin`/`margin_pct` from `/api/menu` and `/api/pos`, the recipe's per-line and total cost, `unit_cost` from `/api/ingredients`, and `food_cost`/`gross_margin`/`food_cost_pct` from `/api/reports` (per-day buckets and the CSV columns too) for cashier and kitchen. A cashier's payload has no such key at all, so nothing can be shown. The guest book stays open to the till on purpose — it is how a ticket gets a name. `tests/test_roles.py` proves the trim per role. |
 | 3.2 Ledger, audit trail and derived loyalty numbers are not writable | **Done.** `stock.py` is the only writer of `stock_qty`; there are no update/delete routes on movements or audit rows (`test_ledger_and_trail_have_no_write_routes`); points are derived per request, never stored. |
 | 3.3 Explicit field allow-lists (no mass assignment) | **Done.** Every write takes a Pydantic model with named fields; no endpoint spreads a request body into a model. Role/access changes go through `PATCH /api/team/{id}` only. |
-| 3.3 Function-level authorization (`requireRole`) | **Done for accounts and the platform surface, outstanding elsewhere.** `POST/PATCH/DELETE /api/team`, `PATCH /api/settings` and `POST /api/branches` require the restaurant `admin` (or the platform `owner`, who outranks them); `auth.require_owner` alone gates `/api/restaurants` (create, edit, block, remove) and `/api/income` (list, record and delete payments). Both roles are tested: 403 for everyone else. A member cannot remove their own account or leave a restaurant without an active admin / the platform without an active owner. Account names stay unique across restaurants (sign-in resolves the restaurant from the account), which is why the "keep one active" guards run against the member's own restaurant. Every other endpoint only requires *a* session; per-role restrictions on money, stock and settings are the remaining work. The checklist is the first operational surface with a per-role rule: a member may tick only their own list, a manager (and the admin or owner above them) may tick anyone's, and only an admin edits the checklist items themselves. |
+| 3.3 Function-level authorization (`requireRole`) | **Done for accounts and the platform surface, outstanding elsewhere.** `POST/PATCH/DELETE /api/team`, `PATCH /api/settings` and `POST /api/branches` require the restaurant `admin` (or the platform `owner`, who outranks them); `auth.require_owner` alone gates `/api/restaurants` (create, edit, block, remove) and `/api/income` (list, record and delete payments). Both roles are tested: 403 for everyone else. A member cannot remove their own account or leave a restaurant without an active admin / the platform without an active owner. Account names stay unique across restaurants (sign-in resolves the restaurant from the account), which is why the "keep one active" guards run against the member's own restaurant. Money writes now match the hidden fields: `POST /api/menu/products`, `PUT /api/menu/products/{id}/recipe`, `POST /api/ingredients` are `auth.require_cost`, and a `PATCH` that changes `price` or `unit_cost` calls `auth.guard_cost` — a cashier keeps the operational writes (availability, stock moves, par level) and gets **403** on the price (`tests/test_roles.py`). Every other endpoint only requires *a* session. The checklist is the first operational surface with a per-role rule: a member may tick only their own list, a manager (and the admin or owner above them) may tick anyone's, and only an admin edits the checklist items themselves. |
 | 3.4 Money computed server-side | **Done.** The order payload has no price or total; the server loads products and the store's tax rate, and `test_order_totals_are_recomputed_not_taken_from_the_client` sends forged `price`/`total` and proves they are ignored. |
 | 3.4 Validation: qty 1–99, no negative money | **Done.** `qty` is `gt=0, le=99`; prices, costs and stock are `ge=0`; `test_order_rejects_bad_quantities`. |
 | 3.4 Idempotency key | **Done.** `Idempotency-Key` header, unique per store (`ux_orders_idempotency`); a retry returns the original ticket, a race is caught by the unique index. |
@@ -116,7 +118,7 @@ until staff sign-in gives each session its own identity.
 
 ## Tests (`apps/api/tests/`)
 
-49 checks, all passing, all cleaning up after themselves:
+52 checks, all passing, all cleaning up after themselves:
 
 - security headers, rate limit (429 + `Retry-After`)
 - money recomputed from the menu, not the client
@@ -130,17 +132,22 @@ until staff sign-in gives each session its own identity.
   cannot clock a teammate (403)
 - a manager's lateness is recorded but never deducted, a person's own shift
   time wins over the store's, and only a supervisor sets one (403)
+- a cashier's menu, inventory and report payloads carry no cost or margin, a
+  price move answers 403, and the manager's payload still has both
 
 Not covered, and honest about it: role-based walkthroughs (§4.3), the k6 load test
 and reconciliation (§4), OWASP ZAP, and anything under §3.11–3.13 that needs
-payments — no card or wallet payment is taken in this build.
+payments — no card or wallet payment is taken in this build. The lateness
+deduction on `/api/attendance` is still visible to every signed-in member, because
+the day board is a shared-tablet surface: hiding one person's salary figure from
+the person next to them needs the PIN/unlock work below.
 
 ## Release gate
 
 | Gate | Status |
 |---|---|
 | Tenant isolation tests: 0 failures | ✅ |
-| Mass-assignment and function-level tests | ⚠️ mass assignment ✅; function-level **blocked on roles** |
+| Mass-assignment and function-level tests | ✅ mass assignment; function-level for accounts, the platform surface, money fields and price/cost writes; ⚠️ other operational endpoints are session-only by design |
 | Order tamper, idempotency and concurrency tests | ✅ (concurrency covered by the unique index, not by a load test) |
 | Blind close | N/A — no shifts yet |
 | Rate limits verified (PIN, public order, loyalty, export) | ⚠️ loyalty + export ✅, tested; PIN/public order do not exist |
@@ -150,5 +157,6 @@ payments — no card or wallet payment is taken in this build.
 | Backup export tested, restore rehearsed | ❌ outstanding |
 | Owner alerts | ❌ outstanding (needs roles + notifications) |
 
-**Verdict: harden-what-exists is done; going live needs staff sign-in with roles
-and a PIN, then the P2 items that depend on it.**
+**Verdict: harden-what-exists is done, and roles now gate money fields and account
+management; going live still needs a manager PIN, blind close and the P2 items
+that depend on them.**

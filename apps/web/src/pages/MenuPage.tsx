@@ -4,8 +4,10 @@ import { Link } from 'react-router-dom';
 import CategoryManager from '../components/menu/CategoryManager';
 import ProductDialog from '../components/menu/ProductDialog';
 import { api, type MenuData, type MenuProduct } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { formatCurrency, formatNumber } from '../lib/format';
 import { useLang } from '../lib/i18n';
+import { canSeeCost } from '../lib/roles';
 import { useAppData } from '../lib/store';
 
 function Stat({
@@ -33,11 +35,13 @@ function Stat({
 function ProductCard({
   product,
   currency,
+  showCost,
   onToggle,
   onEdit,
 }: {
   product: MenuProduct;
   currency: string;
+  showCost: boolean;
   onToggle: () => void;
   onEdit: () => void;
 }) {
@@ -86,20 +90,24 @@ function ProductCard({
 
       <div className="flex flex-wrap items-center gap-1.5">
         {hasRecipe ? (
-          <>
-            <span className="chip bg-surface-2 tabular-nums text-ink-2">
-              {t('menu.cost')} {formatCurrency(lang, product.cost, currency)}
-            </span>
-            <span
-              className="chip tabular-nums"
-              style={{
-                background: 'var(--accent-soft)',
-                color: 'var(--accent)',
-              }}
-            >
-              {t('menu.margin')} {formatNumber(lang, product.margin_pct, 1)}%
-            </span>
-          </>
+          showCost ? (
+            <>
+              <span className="chip bg-surface-2 tabular-nums text-ink-2">
+                {t('menu.cost')}{' '}
+                {formatCurrency(lang, product.cost ?? 0, currency)}
+              </span>
+              <span
+                className="chip tabular-nums"
+                style={{
+                  background: 'var(--accent-soft)',
+                  color: 'var(--accent)',
+                }}
+              >
+                {t('menu.margin')}{' '}
+                {formatNumber(lang, product.margin_pct ?? 0, 1)}%
+              </span>
+            </>
+          ) : null
         ) : (
           <span className="chip bg-surface-2 text-[color:var(--warning)]">
             {t('menu.noRecipe')}
@@ -120,14 +128,16 @@ function ProductCard({
           <BookOpen size={15} />
           {t('menu.recipe')}
         </Link>
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={t('menu.edit')}
-          className="icon-btn h-9 w-9"
-        >
-          <Pencil size={15} />
-        </button>
+        {showCost ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={t('menu.edit')}
+            className="icon-btn h-9 w-9"
+          >
+            <Pencil size={15} />
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -135,6 +145,8 @@ function ProductCard({
 
 export default function MenuPage() {
   const { data } = useAppData();
+  const { user } = useAuth();
+  const showCost = canSeeCost(user?.role);
   const currency = data?.tenant.currency ?? 'EGP';
   const { t, lang } = useLang();
 
@@ -267,15 +279,17 @@ export default function MenuPage() {
             <SlidersHorizontal size={15} />
             {t('menu.manageCategories')}
           </button>
-          <button
-            type="button"
-            onClick={openNew}
-            disabled={menu.categories.length === 0}
-            className="btn-primary h-11 min-h-0 px-4 text-[14px]"
-          >
-            <Plus size={17} />
-            {t('menu.newProduct')}
-          </button>
+          {showCost ? (
+            <button
+              type="button"
+              onClick={openNew}
+              disabled={menu.categories.length === 0}
+              className="btn-primary h-11 min-h-0 px-4 text-[14px]"
+            >
+              <Plus size={17} />
+              {t('menu.newProduct')}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -284,10 +298,12 @@ export default function MenuPage() {
           label={t('menu.products')}
           value={formatNumber(lang, menu.summary.product_count)}
         />
-        <Stat
-          label={t('menu.avgMargin')}
-          value={`${formatNumber(lang, menu.summary.avg_margin_pct, 1)}%`}
-        />
+        {showCost ? (
+          <Stat
+            label={t('menu.avgMargin')}
+            value={`${formatNumber(lang, menu.summary.avg_margin_pct ?? 0, 1)}%`}
+          />
+        ) : null}
         <Stat
           label={t('menu.noRecipe')}
           value={formatNumber(lang, menu.summary.without_recipe)}
@@ -404,6 +420,7 @@ export default function MenuPage() {
                   key={product.id}
                   product={product}
                   currency={currency}
+                  showCost={showCost}
                   onToggle={() => toggleAvailability(product)}
                   onEdit={() => openEdit(product)}
                 />

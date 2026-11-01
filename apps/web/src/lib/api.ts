@@ -104,9 +104,10 @@ export type MenuProduct = {
   price: number;
   is_available: boolean;
   sort: number;
-  cost: number;
-  margin: number;
-  margin_pct: number;
+  /** Absent for a cashier or kitchen: the API trims money by role. */
+  cost?: number;
+  margin?: number;
+  margin_pct?: number;
   recipe_lines: number;
 };
 
@@ -117,7 +118,7 @@ export type MenuData = {
     product_count: number;
     category_count: number;
     without_recipe: number;
-    avg_margin_pct: number;
+    avg_margin_pct?: number;
   };
 };
 
@@ -144,7 +145,8 @@ export type Ingredient = {
   name_ar: string;
   name_en: string;
   unit: IngredientUnit;
-  unit_cost: number;
+  /** Absent for a cashier or kitchen: the API trims money by role. */
+  unit_cost?: number;
   stock_qty: number;
   par_level: number;
   is_low: boolean;
@@ -192,9 +194,10 @@ export type RecipeIngredient = {
   name_ar: string;
   name_en: string;
   unit: IngredientUnit;
-  unit_cost: number;
+  /** Absent for a cashier or kitchen: the API trims money by role. */
+  unit_cost?: number;
   qty: number;
-  line_cost: number;
+  line_cost?: number;
 };
 
 export type RecipeData = {
@@ -208,11 +211,12 @@ export type RecipeData = {
     is_available: boolean;
   };
   lines: RecipeIngredient[];
+  /** `price` only, for a role that may not see cost. */
   totals: {
-    cost: number;
+    cost?: number;
     price: number;
-    margin: number;
-    food_cost_pct: number;
+    margin?: number;
+    food_cost_pct?: number;
   };
 };
 
@@ -300,7 +304,8 @@ export type ReportPoint = {
   day: string;
   orders: number;
   revenue: number;
-  food_cost: number;
+  /** Absent for a cashier or kitchen: the API trims money by role. */
+  food_cost?: number;
 };
 
 export type ReportData = {
@@ -313,10 +318,11 @@ export type ReportData = {
     revenue: number;
     tax: number;
     total: number;
-    food_cost: number;
-    gross_margin: number;
-    gross_margin_pct: number;
-    food_cost_pct: number;
+    /** The four cost figures are absent for a cashier or kitchen. */
+    food_cost?: number;
+    gross_margin?: number;
+    gross_margin_pct?: number;
+    food_cost_pct?: number;
     avg_ticket: number;
     cancelled_orders: number;
     cancelled_value: number;

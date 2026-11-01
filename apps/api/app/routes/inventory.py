@@ -6,9 +6,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import audit
+from ..auth import current_user, guard_cost, require_cost
 from ..db import get_db
-from ..deps import current_tenant
-from ..models import Ingredient, RecipeLine, StockMovement, Tenant
+from ..deps import current_tenant, sees_cost
+from ..models import Ingredient, RecipeLine, Staff, StockMovement, Tenant
 from ..security import client_host
 from ..stock import is_low, recent_movements, record
 
@@ -50,24 +51,26 @@ def serialize_inventory(db: Session, tenant: Tenant) -> dict:
         .order_by(Ingredient.id)
         .all()
     )
-    return {
-        "ingredients": [
-            {
-                "id": row.id,
-                "name_ar": row.name_ar,
-                "name_en": row.name_en,
-                "unit": row.unit,
-                "unit_cost": row.unit_cost,
-                "stock_qty": row.stock_qty,
-                "par_level": row.par_level,
-                "is_low": is_low(row),
-                "recipes_using": counts.get(row.id, 0),
-                "has_movements": row.id in stocked,
-            }
-            for row in rows
-        ],
-        "movements": recent_movements(db, tenant),
-    }
+    show_cost = sees_cost()
+    catalog = []
+    for row in rows:
+        item = {
+            "id": row.id,
+            "name_ar": row.name_ar,
+            "name_en": row.name_en,
+            "unit": row.unit,
+            "stock_qty": row.stock_qty,
+            "par_level": row.par_level,
+            "is_low": is_low(row),
+            "recipes_using": counts.get(row.id, 0),
+            "has_movements": row.id in stocked,
+        }
+        # A unit cost is the manager's number; the till counts what is on the
+        # shelf, not what it cost (SECURITY.md §3.2).
+        if show_cost:
+            item["unit_cost"] = row.unit_cost
+        catalog.append(item)
+    return {"ingredients": catalog, "movements": recent_movements(db, tenant)}
 
 
 def get_ingredient(db: Session, tenant: Tenant, ingredient_id: int) -> Ingredient:
@@ -116,7 +119,11 @@ def list_ingredients(db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=201)
-def create_ingredient(payload: IngredientIn, db: Session = Depends(get_db)):
+def create_ingredient(
+    payload: IngredientIn,
+    user: Staff = Depends(require_cost),
+    db: Session = Depends(get_db),
+):
     tenant = current_tenant(db)
     db.add(Ingredient(tenant_id=tenant.id, **payload.model_dump()))
     db.commit()
@@ -128,11 +135,16 @@ def update_ingredient(
     ingredient_id: int,
     patch: IngredientPatch,
     request: Request,
+    user: Staff = Depends(current_user),
     db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     ingredient = get_ingredient(db, tenant, ingredient_id)
     changes = patch.model_dump(exclude_unset=True)
+    if "unit_cost" in changes and changes["unit_cost"] != ingredient.unit_cost:
+        # A cost is money; a delivery, a write-off and a par-level stay open to
+        # the floor, because those are stock movements rather than prices.
+        guard_cost(user)
     # A manual stock edit is still a ledger entry, so the balance stays explained.
     new_stock = changes.pop("stock_qty", None)
     for field, value in changes.items():

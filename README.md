@@ -115,8 +115,9 @@ every query is scoped by the store the API resolves from the database, money is
 always recomputed server-side, `POST /api/orders` accepts an `Idempotency-Key`,
 business flows carry their own rate limits (429 + `Retry-After`), and the actions
 that move money, stock or access leave append-only `audit_logs` rows
-(`GET /api/audit`). Staff sign-in and roles are the outstanding item before a real
-restaurant goes live.
+(`GET /api/audit`). Cost, margin and food cost never reach a cashier's or a
+kitchen's payload, and only a manager or an admin may move a price. Manager PINs
+and blind close are the outstanding items before a real restaurant goes live.
 
 ```bash
 docker compose -f docker-compose.base44.yml exec -T api python -m pytest tests -q

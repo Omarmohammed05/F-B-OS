@@ -2,8 +2,10 @@ import { Download } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import RevenueChart from '../components/RevenueChart';
 import { api, type ReportData } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { formatCurrency, formatNumber } from '../lib/format';
 import { useLang, type TranslationKey } from '../lib/i18n';
+import { canSeeCost } from '../lib/roles';
 import { useAppData } from '../lib/store';
 
 const CHANNEL_KEY: Record<string, TranslationKey> = {
@@ -83,6 +85,8 @@ function SplitList({
 
 export default function ReportsPage() {
   const { data } = useAppData();
+  const { user } = useAuth();
+  const showCost = canSeeCost(user?.role);
   const currency = data?.tenant.currency ?? 'EGP';
   const { t, lang } = useLang();
 
@@ -197,11 +201,13 @@ export default function ReportsPage() {
               label={t('rep.avgTicket')}
               value={formatCurrency(lang, totals.avg_ticket, currency)}
             />
-            <Stat
-              label={t('rep.foodCost')}
-              value={`${formatNumber(lang, totals.food_cost_pct, 1)}%`}
-              note={t('rep.target')}
-            />
+            {showCost ? (
+              <Stat
+                label={t('rep.foodCost')}
+                value={`${formatNumber(lang, totals.food_cost_pct ?? 0, 1)}%`}
+                note={t('rep.target')}
+              />
+            ) : null}
           </div>
 
           <RevenueChart
@@ -224,14 +230,26 @@ export default function ReportsPage() {
                     label: t('rep.revenue'),
                     value: formatCurrency(lang, totals.revenue, currency),
                   },
-                  {
-                    label: t('rep.cost'),
-                    value: formatCurrency(lang, totals.food_cost, currency),
-                  },
-                  {
-                    label: t('rep.gross'),
-                    value: formatCurrency(lang, totals.gross_margin, currency),
-                  },
+                  ...(showCost
+                    ? [
+                        {
+                          label: t('rep.cost'),
+                          value: formatCurrency(
+                            lang,
+                            totals.food_cost ?? 0,
+                            currency,
+                          ),
+                        },
+                        {
+                          label: t('rep.gross'),
+                          value: formatCurrency(
+                            lang,
+                            totals.gross_margin ?? 0,
+                            currency,
+                          ),
+                        },
+                      ]
+                    : []),
                   {
                     label: t('rep.cancelled'),
                     value: `${formatNumber(lang, totals.cancelled_orders)} · ${formatCurrency(

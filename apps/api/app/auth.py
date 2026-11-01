@@ -20,7 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from .db import SessionLocal, get_db
-from .deps import set_request_tenant
+from .deps import COST_ROLES, set_request_role, set_request_tenant
 from .models import AuthSession, Staff, Tenant
 
 COOKIE_NAME = "sufra_session"
@@ -172,6 +172,9 @@ class SessionGate(BaseHTTPMiddleware):
         # Every `/api` handler then reads this member's own restaurant, so two
         # restaurants signing in on the same API never see each other's data.
         set_request_tenant(staff.tenant_id)
+        # ...and what that member is allowed to see on the payload (no cost for
+        # the till, see `deps.sees_cost`).
+        set_request_role(staff.role)
         return await call_next(request)
 
 
@@ -198,6 +201,26 @@ def require_admin(user: Staff = Depends(current_user)) -> Staff:
             status_code=403,
             detail="Only an admin can manage accounts and the store profile.",
         )
+    return user
+
+
+def guard_cost(user: Staff) -> None:
+    """403 unless the member may move money — a price or a unit cost.
+
+    A cashier rings up tickets and a kitchen moves stock; neither sets what a
+    plate costs. These are the same roles a payload shows cost and margin to
+    (`deps.sees_cost`), so a hidden field is never written blind.
+    """
+    if user.role not in COST_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Only a manager or an admin can change prices and costs.",
+        )
+
+
+def require_cost(user: Staff = Depends(current_user)) -> Staff:
+    """`guard_cost` as a dependency, for endpoints that are money end to end."""
+    guard_cost(user)
     return user
 
 

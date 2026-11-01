@@ -8,6 +8,7 @@ import {
   type IngredientsData,
   type StockMovement,
 } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import {
   formatDayShort,
   formatClock,
@@ -15,6 +16,7 @@ import {
   formatNumber,
 } from '../lib/format';
 import { useLang, type TranslationKey } from '../lib/i18n';
+import { canSeeCost } from '../lib/roles';
 import { useAppData } from '../lib/store';
 
 const UNIT_KEY: Record<string, TranslationKey> = {
@@ -32,6 +34,8 @@ const REASON_KEY: Record<StockMovement['reason'], TranslationKey> = {
 
 export default function InventoryPage() {
   const { data } = useAppData();
+  const { user } = useAuth();
+  const showCost = canSeeCost(user?.role);
   const currency = data?.tenant.currency ?? 'EGP';
   const { t, lang } = useLang();
 
@@ -107,14 +111,16 @@ export default function InventoryPage() {
           </h1>
           <p className="mt-1 text-[14px] text-ink-2">{t('inv.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          onClick={openNew}
-          className="btn-primary h-11 min-h-0 px-4 text-[14px]"
-        >
-          <Plus size={17} />
-          {t('inv.new')}
-        </button>
+        {showCost ? (
+          <button
+            type="button"
+            onClick={openNew}
+            className="btn-primary h-11 min-h-0 px-4 text-[14px]"
+          >
+            <Plus size={17} />
+            {t('inv.new')}
+          </button>
+        ) : null}
       </div>
 
       <label className="relative flex w-full items-center sm:max-w-[320px]">
@@ -161,10 +167,12 @@ export default function InventoryPage() {
           <p className="text-[13px] text-ink-2">
             {t('inv.emptyHint')}
           </p>
-          <button type="button" onClick={openNew} className="btn-primary mt-2">
-            <Plus size={17} />
-            {t('inv.new')}
-          </button>
+          {showCost ? (
+            <button type="button" onClick={openNew} className="btn-primary mt-2">
+              <Plus size={17} />
+              {t('inv.new')}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="card overflow-x-auto">
@@ -174,9 +182,11 @@ export default function InventoryPage() {
                 <th className="px-4 py-2.5 text-start font-semibold">
                   {t('inv.ingredient')}
                 </th>
-                <th className="px-4 py-2.5 text-start font-semibold">
-                  {t('inv.unitCost')}
-                </th>
+                {showCost ? (
+                  <th className="px-4 py-2.5 text-start font-semibold">
+                    {t('inv.unitCost')}
+                  </th>
+                ) : null}
                 <th className="px-4 py-2.5 text-start font-semibold">
                   {t('inv.stock')}
                 </th>
@@ -204,9 +214,16 @@ export default function InventoryPage() {
                       <p className="font-medium text-ink">{name}</p>
                       <p className="text-[12px] text-ink-2">{unitLabel}</p>
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-ink">
-                      {formatMoney(lang, ingredient.unit_cost, currency, 3)}
-                    </td>
+                    {showCost ? (
+                      <td className="px-4 py-3 tabular-nums text-ink">
+                        {formatMoney(
+                          lang,
+                          ingredient.unit_cost ?? 0,
+                          currency,
+                          3,
+                        )}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3">
                       <span className="tabular-nums text-ink">
                         {formatNumber(lang, ingredient.stock_qty, 1)}{' '}
@@ -241,14 +258,16 @@ export default function InventoryPage() {
                         >
                           <ArrowDownUp size={14} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(ingredient)}
-                          aria-label={`${t('menu.edit')} — ${name}`}
-                          className="icon-btn h-9 w-9"
-                        >
-                          <Pencil size={14} />
-                        </button>
+                        {showCost ? (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(ingredient)}
+                            aria-label={`${t('menu.edit')} — ${name}`}
+                            className="icon-btn h-9 w-9"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        ) : null}
                         {locked ? (
                           <span
                             title={

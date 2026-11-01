@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import active_branch_id, current_tenant
+from ..deps import active_branch_id, current_tenant, sees_cost
 from ..models import Order, OrderItem, Tenant
 from .menu import recipe_costs
 
@@ -148,7 +148,7 @@ def build_report(db: Session, tenant: Tenant, days: int) -> dict:
     for row in top_products:
         row["revenue"] = round(row["revenue"], 2)
 
-    return {
+    report = {
         "days": days,
         "start": start_day.isoformat(),
         "series": list(series.values()),
@@ -163,6 +163,14 @@ def build_report(db: Session, tenant: Tenant, days: int) -> dict:
             for row in payments.values()
         ],
     }
+    if not sees_cost():
+        # Food cost and the margin it leaves are the manager's numbers; the till
+        # still reads the sales it rang up (SECURITY.md §3.2).
+        for key in ("food_cost", "gross_margin", "gross_margin_pct", "food_cost_pct"):
+            totals.pop(key, None)
+        for bucket in report["series"]:
+            bucket.pop("food_cost", None)
+    return report
 
 
 @router.get("")
@@ -177,30 +185,39 @@ def export_report(
     days: int = Query(default=7, ge=1, le=90), db: Session = Depends(get_db)
 ):
     report = build_report(db, current_tenant(db), days)
+    show_cost = sees_cost()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["date", "orders", "revenue", "food_cost", "gross_margin", "tax"])
+    writer.writerow(
+        ["date", "orders", "revenue"]
+        + (["food_cost", "gross_margin"] if show_cost else [])
+        + ["tax"]
+    )
     for row in report["series"]:
         writer.writerow(
-            [
-                row["day"],
-                row["orders"],
-                f"{row['revenue']:.2f}",
-                f"{row['food_cost']:.2f}",
-                f"{row['revenue'] - row['food_cost']:.2f}",
-                "",
-            ]
+            [row["day"], row["orders"], f"{row['revenue']:.2f}"]
+            + (
+                [
+                    f"{row['food_cost']:.2f}",
+                    f"{row['revenue'] - row['food_cost']:.2f}",
+                ]
+                if show_cost
+                else []
+            )
+            + [""]
         )
     totals = report["totals"]
     writer.writerow(
-        [
-            "total",
-            totals["orders"],
-            f"{totals['revenue']:.2f}",
-            f"{totals['food_cost']:.2f}",
-            f"{totals['gross_margin']:.2f}",
-            f"{totals['tax']:.2f}",
-        ]
+        ["total", totals["orders"], f"{totals['revenue']:.2f}"]
+        + (
+            [
+                f"{totals['food_cost']:.2f}",
+                f"{totals['gross_margin']:.2f}",
+            ]
+            if show_cost
+            else []
+        )
+        + [f"{totals['tax']:.2f}"]
     )
     return Response(
         content=buffer.getvalue(),

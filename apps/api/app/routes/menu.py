@@ -7,9 +7,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .. import audit
+from ..auth import current_user, guard_cost, require_cost
 from ..db import get_db
-from ..deps import current_tenant
-from ..models import Ingredient, MenuCategory, Product, RecipeLine, Tenant
+from ..deps import current_tenant, sees_cost
+from ..models import Ingredient, MenuCategory, Product, RecipeLine, Staff, Tenant
 from ..security import client_host
 
 router = APIRouter(prefix="/api/menu", tags=["menu"])
@@ -34,9 +35,7 @@ def recipe_costs(db: Session, tenant_id: int):
 
 
 def serialize_product(product: Product, costs: dict[int, float], counts: dict[int, int]) -> dict:
-    cost = round(costs.get(product.id, 0.0), 2)
-    margin = round(product.price - cost, 2)
-    return {
+    row = {
         "id": product.id,
         "category_id": product.category_id,
         "name_ar": product.name_ar,
@@ -45,11 +44,19 @@ def serialize_product(product: Product, costs: dict[int, float], counts: dict[in
         "price": product.price,
         "is_available": product.is_available,
         "sort": product.sort,
-        "cost": cost,
-        "margin": margin,
-        "margin_pct": round(margin / product.price * 100, 1) if product.price else 0.0,
         "recipe_lines": counts.get(product.id, 0),
     }
+    # What the plate costs is the manager's business, not the till's — the keys
+    # are absent for a cashier rather than zeroed, so nothing can be shown.
+    if sees_cost():
+        cost = round(costs.get(product.id, 0.0), 2)
+        margin = round(product.price - cost, 2)
+        row["cost"] = cost
+        row["margin"] = margin
+        row["margin_pct"] = (
+            round(margin / product.price * 100, 1) if product.price else 0.0
+        )
+    return row
 
 
 def serialize_menu(db: Session, tenant: Tenant) -> dict:
@@ -67,7 +74,19 @@ def serialize_menu(db: Session, tenant: Tenant) -> dict:
     )
     costs, counts = recipe_costs(db, tenant.id)
     product_rows = [serialize_product(p, costs, counts) for p in products]
-    priced = [row for row in product_rows if row["price"] > 0]
+
+    summary = {
+        "product_count": len(products),
+        "category_count": len(categories),
+        "without_recipe": sum(1 for row in product_rows if not row["recipe_lines"]),
+    }
+    if sees_cost():
+        priced = [row for row in product_rows if row["price"] > 0]
+        summary["avg_margin_pct"] = (
+            round(sum(row["margin_pct"] for row in priced) / len(priced), 1)
+            if priced
+            else 0.0
+        )
 
     return {
         "categories": [
@@ -84,16 +103,7 @@ def serialize_menu(db: Session, tenant: Tenant) -> dict:
             for category in categories
         ],
         "products": product_rows,
-        "summary": {
-            "product_count": len(products),
-            "category_count": len(categories),
-            "without_recipe": sum(1 for row in product_rows if not row["recipe_lines"]),
-            "avg_margin_pct": round(
-                sum(row["margin_pct"] for row in priced) / len(priced), 1
-            )
-            if priced
-            else 0.0,
-        },
+        "summary": summary,
     }
 
 
@@ -108,21 +118,32 @@ def serialize_recipe(db: Session, tenant: Tenant, product: Product) -> dict:
         .order_by(RecipeLine.id)
         .all()
     )
+    show_cost = sees_cost()
     lines = []
     for line, ingredient in rows:
-        lines.append(
+        row = {
+            "ingredient_id": ingredient.id,
+            "name_ar": ingredient.name_ar,
+            "name_en": ingredient.name_en,
+            "unit": ingredient.unit,
+            "qty": line.qty,
+        }
+        if show_cost:
+            row["unit_cost"] = ingredient.unit_cost
+            row["line_cost"] = round(line.qty * ingredient.unit_cost, 2)
+        lines.append(row)
+
+    price = product.price
+    totals = {"price": price}
+    if show_cost:
+        cost = round(sum(row["line_cost"] for row in lines), 2)
+        totals.update(
             {
-                "ingredient_id": ingredient.id,
-                "name_ar": ingredient.name_ar,
-                "name_en": ingredient.name_en,
-                "unit": ingredient.unit,
-                "unit_cost": ingredient.unit_cost,
-                "qty": line.qty,
-                "line_cost": round(line.qty * ingredient.unit_cost, 2),
+                "cost": cost,
+                "margin": round(price - cost, 2),
+                "food_cost_pct": round(cost / price * 100, 1) if price else 0.0,
             }
         )
-    cost = round(sum(row["line_cost"] for row in lines), 2)
-    price = product.price
     return {
         "product": {
             "id": product.id,
@@ -134,12 +155,7 @@ def serialize_recipe(db: Session, tenant: Tenant, product: Product) -> dict:
             "is_available": product.is_available,
         },
         "lines": lines,
-        "totals": {
-            "cost": cost,
-            "price": price,
-            "margin": round(price - cost, 2),
-            "food_cost_pct": round(cost / price * 100, 1) if price else 0.0,
-        },
+        "totals": totals,
     }
 
 
@@ -268,7 +284,11 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/products", status_code=201)
-def create_product(payload: ProductIn, db: Session = Depends(get_db)):
+def create_product(
+    payload: ProductIn,
+    user: Staff = Depends(require_cost),
+    db: Session = Depends(get_db),
+):
     tenant = current_tenant(db)
     get_category(db, tenant, payload.category_id)
     highest = db.query(func.max(Product.sort)).filter_by(tenant_id=tenant.id).scalar()
@@ -287,6 +307,7 @@ def update_product(
     product_id: int,
     patch: ProductPatch,
     request: Request,
+    user: Staff = Depends(current_user),
     db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
@@ -295,6 +316,9 @@ def update_product(
     if "category_id" in changes:
         get_category(db, tenant, changes["category_id"])
     if "price" in changes and changes["price"] != product.price:
+        # A price is money: only the manager and above may move it. Availability
+        # (the same payload without a new price) stays open to the till.
+        guard_cost(user)
         # A price move is the classic till fraud, so it always leaves a trace.
         audit.log(
             db,
@@ -332,7 +356,10 @@ def get_recipe(product_id: int, db: Session = Depends(get_db)):
 
 @router.put("/products/{product_id}/recipe")
 def save_recipe(
-    product_id: int, payload: RecipeIn, db: Session = Depends(get_db)
+    product_id: int,
+    payload: RecipeIn,
+    user: Staff = Depends(require_cost),
+    db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     product = get_product(db, tenant, product_id)

@@ -10,9 +10,33 @@ from .models import Branch, Tenant
 # `current_tenant` falls back to the seeded store.
 _request_tenant: ContextVar[int | None] = ContextVar("request_tenant", default=None)
 
+# Who may see what a plate costs and move a price: the manager on shift and the
+# people above them. The till and the pass ring up tickets; they do not need the
+# margin (SECURITY.md §3.2).
+COST_ROLES = ("owner", "admin", "manager")
+
+# The role that signed in, stamped by `auth.SessionGate` like the tenant above.
+_request_role: ContextVar[str | None] = ContextVar("request_role", default=None)
+
 
 def set_request_tenant(tenant_id: int | None) -> None:
     _request_tenant.set(tenant_id)
+
+
+def set_request_role(role: str | None) -> None:
+    _request_role.set(role)
+
+
+def sees_cost() -> bool:
+    """False on a cashier's or kitchen's request: no cost, margin or food cost.
+
+    The serializers ask this instead of every route threading a flag through, so
+    a money field cannot be hidden on one page and leak on another. Outside a
+    request (seed, tests, scripts) there is no role and the money is visible —
+    the same fallback `current_tenant` uses.
+    """
+    role = _request_role.get()
+    return role is None or role in COST_ROLES
 
 
 def current_tenant(db: Session) -> Tenant:
