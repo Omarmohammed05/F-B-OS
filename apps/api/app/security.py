@@ -67,6 +67,9 @@ class Rule:
 RULES: tuple[Rule, ...] = (
     # Guessing a password is the one flow where ten tries a minute is plenty.
     Rule(("POST",), r"^/api/auth/login$", 10, 60),
+    # "Try the demo" is a sign-in without a password, so it gets its own budget:
+    # a person trying the app a few times, not a script minting sessions.
+    Rule(("POST",), r"^/api/auth/demo$", 20, 3600),
     # Setting a password through an activation link is a sign-in in all but name.
     Rule(("POST",), r"^/api/invites/[0-9a-f]{32}$", 10, 60),
     Rule(("GET",), r"^/api/loyalty/cards/(?P<card>\d+)/wallet-link$", 5, 3600, by_card=True),

@@ -1,3 +1,5 @@
+import { announceDemoBlocked } from './demoNotice';
+
 export type SetupTask = {
   key: string;
   title_ar: string;
@@ -721,6 +723,8 @@ export type AuthUser = {
   role: StaffRole;
   is_active: boolean;
   needs_onboarding: boolean;
+  // A read-only visitor on the sample store: the API refuses every write.
+  is_demo: boolean;
 };
 
 export type SettingsData = {
@@ -808,6 +812,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Non-JSON error body; keep the status message.
     }
+    // The demo store refuses writes: say so instead of the page's generic text.
+    if (response.headers.get('x-demo-read-only') === '1') announceDemoBlocked();
     throw new Error(message);
   }
   return (await response.json()) as T;
@@ -822,6 +828,8 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+  demoAvailable: () => request<{ available: boolean }>('/api/auth/demo'),
+  startDemo: () => request<AuthUser>('/api/auth/demo', { method: 'POST' }),
   finishOnboarding: () =>
     request<AuthUser>('/api/auth/onboarding', { method: 'POST' }),
 

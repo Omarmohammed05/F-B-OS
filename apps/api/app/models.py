@@ -231,6 +231,9 @@ class Staff(Base):
     # Set when the first sign-in tour is finished or skipped.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The "try the demo" visitor: a live session over the sample store whose
+    # writes the API refuses, so a prospect can walk every screen safely.
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     # This person's own shift time, for the ones who do not start with the
     # store: an empty start (or empty grace) means "use the store's rule".
     shift_start: Mapped[str] = mapped_column(String(5), default="")

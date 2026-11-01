@@ -13,6 +13,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
   signIn: (username: string, password: string) => Promise<void>;
+  startDemo: () => Promise<void>;
   signOut: () => Promise<void>;
   finishTour: () => Promise<void>;
 };
@@ -50,6 +51,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await api.login(username, password));
   }, []);
 
+  // The demo visitor: a real session on the sample store, read-only server-side.
+  const startDemo = useCallback(async () => {
+    setUser(await api.startDemo());
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await api.logout();
@@ -63,8 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, signIn, signOut, finishTour }),
-    [user, loading, signIn, signOut, finishTour],
+    () => ({ user, loading, signIn, startDemo, signOut, finishTour }),
+    [user, loading, signIn, startDemo, signOut, finishTour],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

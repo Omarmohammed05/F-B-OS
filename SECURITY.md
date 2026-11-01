@@ -36,6 +36,14 @@ by a manager or above — `deps.sees_cost`, `auth.guard_cost` / `require_cost`) 
 **access** (team, settings, branches and the platform surface, see the gate
 table). Everything else still only needs *a* session.
 
+**The demo session is read-only.** `/api/auth/demo` signs a visitor into the
+sample store as a member flagged `staff.is_demo`, and `auth.SessionGate` refuses
+every non-GET it sends (only `/api/auth/logout` passes) before a handler runs.
+It is an `admin` of that store, so the platform surface (`/api/restaurants`,
+`/api/income`) stays closed to it. The account has no username or password, so
+the password form cannot reach it, and the endpoint is budgeted at 20/hour per
+caller.
+
 ## P0 — before launch
 
 | Plan item | Status |

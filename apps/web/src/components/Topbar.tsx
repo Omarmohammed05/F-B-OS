@@ -47,6 +47,15 @@ export default function Topbar({ onOpenMenu, onOpenPos }: Props) {
         </label>
 
         <div className="ms-auto flex items-center gap-2">
+          {/* The demo store takes no writes, so say it before a save is tried. */}
+          {user?.is_demo ? (
+            <span
+              className="chip hidden border border-line text-ink-2 sm:inline-flex"
+              title={t('top.demoHint')}
+            >
+              {t('top.demo')}
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={toggleLang}

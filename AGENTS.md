@@ -658,6 +658,37 @@ service.
   ticket (its items first) and the guest profile it created. Tests:
   `apps/api/tests/test_public_menu.py` (6 checks, run with no session).
 
+## Try the demo (read-only)
+
+- The sign-in page's **جرّب النسخة التجريبية** button opens a real session on the
+  sample store. `staff.is_demo` (additive column in `db.py` **and** `models.py`)
+  marks that one account; the seed writes it next to the demo roster
+  (`SEED_DEMO_DATA=1`), with **no username and no password**, so the password form
+  can never sign into it. `onboarded_at` is set at seed time because the tour's
+  "finished" stamp is a write.
+- `GET /api/auth/demo` answers `{available}` and the button only renders when it
+  is true, so a deployment with no sample store (a production database) shows a
+  plain sign-in page instead of a dead button. `POST /api/auth/demo` opens the
+  session; both are in `auth.PUBLIC_PATHS`, budgeted at 20/hour per caller in
+  `security.RULES`.
+- **Reads are normal, writes are refused**: `auth.SessionGate` answers **403** for
+  any non-GET a demo session sends (only `/api/auth/logout` is exempt) with
+  `detail` = `auth.DEMO_READ_ONLY` and the header `X-Demo-Read-Only: 1`. The
+  refusal happens before a handler runs, so no endpoint needs its own demo check.
+- The demo is an `admin` of the sample store: every store screen (POS, orders,
+  menu, QR, stock, guests, loyalty, reports, team, settings) opens normally; the
+  platform-only screens (`/api/restaurants`, `/api/income`, `/platform`) stay 403,
+  so a visitor never reads the platform's books.
+- The web side says so twice: a `top.demo` chip in the top bar, and
+  `components/DemoNotice.tsx`, which `lib/api.ts` triggers on any response carrying
+  `X-Demo-Read-Only` — otherwise a refused save would read as the page's generic
+  "try again".
+- Verify: signed out, the login page shows the button; clicking it lands on the
+  dashboard with the demo chip; a save on `/settings` shows the read-only banner
+  and `GET /api/settings` still carries the old name. Signing out works.
+  Tests: `apps/api/tests/test_demo.py` (2 checks; it logs out, leaving no demo
+  session rows — one `staff` row with `is_demo` is the seeded baseline).
+
 ## Staff, branches and the roster
 
 - Roles decide where a person sits: `admin` and `owner` are store-wide

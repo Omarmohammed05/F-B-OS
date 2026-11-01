@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useLang } from '../lib/i18n';
 import { useAppData } from '../lib/store';
+import DemoNotice from './DemoNotice';
 import Sidebar from './Sidebar';
 import TabBar from './TabBar';
 import Topbar from './Topbar';
@@ -70,6 +71,7 @@ export default function AppShell() {
         </main>
       </div>
 
+      <DemoNotice />
       <TabBar />
     </div>
   );

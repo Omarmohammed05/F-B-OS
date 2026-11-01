@@ -1,17 +1,36 @@
-import { Lock, User } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { Lock, Sparkles, User } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useLang } from '../lib/i18n';
 
 export default function LoginPage() {
   const { t, lang, setLang } = useLang();
-  const { user, loading, signIn } = useAuth();
+  const { user, loading, signIn, startDemo } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The button only appears where a sample store exists (see `POST /api/auth/demo`).
+  const [demoAvailable, setDemoAvailable] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .demoAvailable()
+      .then((result) => {
+        if (!cancelled) setDemoAvailable(result.available);
+      })
+      .catch(() => {
+        // No demo here is the normal answer; nothing to show or report.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!loading && user) {
     return <Navigate to={user.needs_onboarding ? '/onboarding' : '/'} replace />;
@@ -35,6 +54,21 @@ export default function LoginPage() {
       else setError(t('login.failed'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDemo = async () => {
+    setDemoLoading(true);
+    setError(null);
+    try {
+      await startDemo();
+      navigate('/', { replace: true });
+    } catch (err) {
+      const message = String(err);
+      if (message.startsWith('429')) setError(t('login.throttled'));
+      else setError(t('login.demoUnavailable'));
+    } finally {
+      setDemoLoading(false);
     }
   };
 
@@ -130,6 +164,23 @@ export default function LoginPage() {
               {submitting ? t('login.signingIn') : t('login.submit')}
             </button>
           </form>
+
+          {demoAvailable ? (
+            <div className="mt-5 border-t border-line pt-5">
+              <button
+                type="button"
+                onClick={handleDemo}
+                disabled={demoLoading}
+                className="btn-quiet h-12 w-full disabled:opacity-60"
+              >
+                <Sparkles size={16} />
+                {demoLoading ? t('login.demoStarting') : t('login.demo')}
+              </button>
+              <p className="mt-2 text-center text-[12px] leading-5 text-ink-2">
+                {t('login.demoHint')}
+              </p>
+            </div>
+          ) : null}
         </div>
       </main>
     </div>

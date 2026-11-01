@@ -534,6 +534,23 @@ def seed() -> None:
                     )
                 )
 
+        # The "try the demo" visitor: a live, read-only session on the sample
+        # store (`auth.SessionGate` refuses its writes). No username and no
+        # password — `POST /api/auth/demo` is the only way in.
+        if db.query(Staff).filter_by(tenant_id=tenant.id, is_demo=True).count() == 0:
+            db.add(
+                Staff(
+                    tenant_id=tenant.id,
+                    name="Demo Visitor",
+                    role="admin",
+                    is_active=True,
+                    is_demo=True,
+                    # The tour is part of what a visitor comes to see, and its
+                    # "finished" stamp would be a write this session cannot make.
+                    onboarded_at=datetime.now(),
+                )
+            )
+
         # The standing checklist, matched by English title so a partial seed
         # completes without duplicating tasks.
         if db.query(ChecklistTask).filter_by(tenant_id=tenant.id).count() == 0:

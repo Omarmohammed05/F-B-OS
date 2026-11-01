@@ -30,8 +30,19 @@ _ITERATIONS = 240_000
 # Reachable without a session: the liveness probe, the two endpoints that create
 # or clear one, and the activation link a new restaurant's admin opens before
 # they have an account.
-PUBLIC_PATHS = ("/api/health", "/api/auth/login", "/api/auth/logout")
+PUBLIC_PATHS = (
+    "/api/health",
+    "/api/auth/login",
+    "/api/auth/logout",
+    # "Try the demo" is a sign-in that needs no password.
+    "/api/auth/demo",
+)
 PUBLIC_PREFIXES = ("/api/invites/", "/api/public/")
+
+# A demo session reads everything and writes nothing. Signing out is the one
+# exception, otherwise the visitor could not leave.
+DEMO_WRITE_PATHS = ("/api/auth/logout",)
+DEMO_READ_ONLY = "This is the demo store — it is read-only. Open your own store to make changes."
 
 # Who may manage accounts, the store profile and the menu of people's access:
 # a restaurant's own admin, and the platform owner above them.
@@ -131,6 +142,8 @@ def user_payload(staff: Staff) -> dict:
         "is_active": staff.is_active,
         # The tour opens on the first sign-in and can be reopened from the menu.
         "needs_onboarding": staff.onboarded_at is None,
+        # The UI says so in the top bar, so nobody hunts for a save button.
+        "is_demo": staff.is_demo,
     }
 
 
@@ -167,6 +180,20 @@ class SessionGate(BaseHTTPMiddleware):
         if closed:
             return JSONResponse(
                 {"detail": "This restaurant's access is suspended."}, status_code=403
+            )
+        # A demo session walks the whole app but changes nothing: the refusal
+        # happens here, before any handler can touch a row.
+        if (
+            staff.is_demo
+            and request.method not in ("GET", "HEAD", "OPTIONS")
+            and path not in DEMO_WRITE_PATHS
+        ):
+            return JSONResponse(
+                {"detail": DEMO_READ_ONLY},
+                status_code=403,
+                # A language-independent flag: the web app explains the refusal
+                # in the visitor's own language.
+                headers={"X-Demo-Read-Only": "1"},
             )
 
         # The dependency below re-reads the row on the request's own session.

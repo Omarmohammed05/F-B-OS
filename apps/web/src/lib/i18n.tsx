@@ -60,6 +60,16 @@ const en = {
   'activate.taken': 'That username is already in use. Pick another.',
   'activate.failed': 'Activation failed. Check the fields and try again.',
   'login.empty': 'Enter your username and password.',
+  'login.demo': 'Try the demo',
+  'login.demoStarting': 'Opening the demo…',
+  'login.demoHint':
+    'A full look at a sample restaurant, read-only — nothing you do there is saved.',
+  'login.demoUnavailable': 'The demo is not available right now.',
+  'demo.blocked':
+    'The demo store is read-only, so that change was not saved. Open your own store to make it.',
+  'top.demo': 'Demo · read only',
+  'top.demoHint':
+    'You are visiting the demo store. Screens open normally, but changes are not saved.',
   'tour.welcome': 'Welcome, {name}. Here is the whole app in seven stops.',
   'tour.counter': '{current} of {total}',
   'tour.back': 'Back',
@@ -858,6 +868,16 @@ const ar: Record<TranslationKey, string> = {
   'activate.taken': 'اسم الدخول مستخدم بالفعل. اختر غيره.',
   'activate.failed': 'تعذر التفعيل. راجع البيانات وحاول مرة أخرى.',
   'login.empty': 'أدخل اسم المستخدم وكلمة المرور.',
+  'login.demo': 'جرّب النسخة التجريبية',
+  'login.demoStarting': 'جارٍ فتح التجربة…',
+  'login.demoHint':
+    'جولة كاملة في مطعم تجريبي للقراءة فقط — لا يُحفظ أي تغيير تقوم به.',
+  'login.demoUnavailable': 'النسخة التجريبية غير متاحة الآن.',
+  'demo.blocked':
+    'المتجر التجريبي للقراءة فقط، لذلك لم يُحفظ التغيير. افتح متجرك الخاص لإجرائه.',
+  'top.demo': 'تجريبي · قراءة فقط',
+  'top.demoHint':
+    'أنت داخل المتجر التجريبي. الصفحات تعمل كالمعتاد، لكن التغييرات لا تُحفظ.',
   'tour.welcome': 'أهلًا {name}. هذه الجولة تعرّفك على النظام في سبع خطوات.',
   'tour.counter': '{current} من {total}',
   'tour.back': 'السابق',

@@ -57,6 +57,8 @@ ADDITIVE_COLUMNS = [
     ("staff", "branch_id", "INTEGER NOT NULL DEFAULT 0"),
     # QR menu: the public handle this branch's table stands point at.
     ("branches", "menu_token", "VARCHAR(32) NOT NULL DEFAULT ''"),
+    # The read-only demo visitor (see auth.SessionGate).
+    ("staff", "is_demo", "BOOLEAN NOT NULL DEFAULT FALSE"),
 ]
 
 ADDITIVE_INDEXES = [
