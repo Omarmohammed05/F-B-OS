@@ -2,6 +2,7 @@ import { KeyRound, Trash2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   api,
+  type Restaurant,
   type StaffInput,
   type StaffMember,
   type StaffRole,
@@ -14,6 +15,8 @@ import Sheet from '../Sheet';
 type Props = {
   open: boolean;
   member: StaffMember | null;
+  /** The restaurant the roster is showing; a new account joins this one. */
+  restaurant: Restaurant | null;
   onClose: () => void;
   onSaved: (data: TeamData) => void;
 };
@@ -21,10 +24,11 @@ type Props = {
 export default function StaffDialog({
   open,
   member,
+  restaurant,
   onClose,
   onSaved,
 }: Props) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<StaffRole>('cashier');
@@ -81,6 +85,7 @@ export default function StaffDialog({
     if (creating) {
       payload.username = username.trim();
       payload.password = password;
+      if (restaurant) payload.restaurant_id = restaurant.id;
     } else if (password) {
       payload.password = password;
     }
@@ -161,6 +166,14 @@ export default function StaffDialog({
       }
     >
       <form id="staff-form" onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {creating && restaurant ? (
+          <p className="rounded-field border border-line bg-surface-2 px-3 py-2 text-[12px] text-ink-2">
+            {t('team.accountFor', {
+              restaurant:
+                lang === 'ar' ? restaurant.name_ar : restaurant.name_en,
+            })}
+          </p>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-[13px] font-medium text-ink-2">

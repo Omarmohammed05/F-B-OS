@@ -1,12 +1,26 @@
+from contextvars import ContextVar
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from .models import Branch, Tenant
 
+# The restaurant the caller signed in for. `auth.SessionGate` fills it on every
+# authenticated request; outside a request (seed, tests) it stays empty and
+# `current_tenant` falls back to the seeded store.
+_request_tenant: ContextVar[int | None] = ContextVar("request_tenant", default=None)
+
+
+def set_request_tenant(tenant_id: int | None) -> None:
+    _request_tenant.set(tenant_id)
+
 
 def current_tenant(db: Session) -> Tenant:
-    """Single-store workspace: every request resolves the seeded tenant."""
-    tenant = db.query(Tenant).first()
+    """The restaurant behind the session, so two stores never share a screen."""
+    tenant_id = _request_tenant.get()
+    tenant = db.get(Tenant, tenant_id) if tenant_id else None
+    if tenant is None:
+        tenant = db.query(Tenant).order_by(Tenant.id).first()
     if tenant is None:
         raise HTTPException(status_code=503, detail="Tenant not seeded")
     return tenant

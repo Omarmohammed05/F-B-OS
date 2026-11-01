@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from .. import auth
 from ..db import get_db
-from ..deps import current_tenant
 from ..models import Staff
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -33,22 +32,31 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    tenant = current_tenant(db)
-    staff = (
+    # The account name alone says which restaurant it opens — that is why names
+    # are unique across the platform (see routes/team._new_credentials).
+    candidates = (
         db.query(Staff)
         .filter(
-            Staff.tenant_id == tenant.id,
+            Staff.username != "",
             func.lower(Staff.username) == payload.username.strip().lower(),
         )
-        .first()
+        .all()
     )
+    matches = [
+        row
+        for row in candidates
+        if row.password_hash
+        and auth.check_password(payload.password, row.password_hash)
+    ]
     # One message for a wrong name and a wrong password: no account fishing.
-    if (
-        staff is None
-        or not staff.password_hash
-        or not auth.check_password(payload.password, staff.password_hash)
-    ):
+    if not matches:
         raise HTTPException(status_code=401, detail="Wrong username or password.")
+    if len(matches) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail="This username belongs to more than one restaurant.",
+        )
+    staff = matches[0]
     if not staff.is_active:
         raise HTTPException(status_code=403, detail="This account is switched off.")
 

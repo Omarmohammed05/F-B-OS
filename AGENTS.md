@@ -548,3 +548,38 @@ service.
   `/team` → **إضافة عضو** with a username and password creates a real account that
   shows `@username` in the roster, and removing that member removes the account.
   Leave the roster at its seeded six.
+
+## Several restaurants, one admin
+
+- The tenant a request reads is **the signed-in member's restaurant**, not the
+  first row. `auth.SessionGate` calls `deps.set_request_tenant(staff.tenant_id)`
+  and `deps.current_tenant(db)` reads that context variable (falling back to the
+  lowest-id tenant outside a request: seed, tests, scripts). Adding a tenant
+  therefore never changes what an existing session sees, and a new restaurant's
+  people land in their own empty store.
+- `admin` is **platform-level**: it lists every restaurant and can create, edit
+  and delete accounts in any of them. `GET /api/team?restaurant_id=N` and
+  `POST /api/team` `{restaurant_id}` are the only places a restaurant id is
+  accepted, and both answer **403** for anyone who is not an admin.
+  `PATCH`/`DELETE /api/team/{id}` resolve the member's own restaurant for the
+  owner/admin "keep one active" guards and write the audit row under it.
+- `GET /api/restaurants` and `POST /api/restaurants` (`{name_ar, name_en}`, admin
+  only, 409 when the English name is taken) open a new restaurant. It starts with
+  no branch, menu, guests or setup tasks — every page already renders that state —
+  and copies `currency`, `tax_rate` and `default_language` from the admin's own
+  store so the till charges tax correctly from the first ticket. There is no
+  delete endpoint for a restaurant; remove a scratch one with SQL.
+- Account names are unique **across all restaurants** (`_new_credentials` queries
+  without a tenant filter): the sign-in screen has no store picker, so
+  `POST /api/auth/login` finds the account by name and the account says which
+  restaurant it opens. The `ux_staff_username` index is still per store; the
+  cross-store rule lives in the endpoint.
+- UI: `/team` shows an admin a **restaurant picker** plus **إضافة مطعم**
+  (`components/team/RestaurantDialog.tsx`), and the roster, summary and the
+  create/edit action all follow the selected restaurant. The member dialog states
+  which restaurant a new account joins. Non-admins see their own roster only.
+- Verify with an account of your own: pick **إضافة مطعم**, name it, add a member
+  with a username and password there, sign in as that member in a private window
+  and confirm the store name and roster are the new restaurant's — then delete the
+  member and the restaurant. Tests: `apps/api/tests/test_restaurants.py` (2 checks,
+  removes its own staff, sessions, audit rows and tenant).

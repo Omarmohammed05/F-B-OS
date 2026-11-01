@@ -401,6 +401,17 @@ const en = {
   'team.passwordShort': 'A password needs at least 8 characters.',
   'team.conflict': 'That username is taken, or the change would lock the store.',
   'team.count': '{count} people',
+  'team.restaurant': 'Restaurant',
+  'team.addRestaurant': 'Add restaurant',
+  'team.restaurantTitle': 'Add a restaurant',
+  'team.restaurantHint':
+    'A new restaurant starts empty: its own menu, tickets, guests and team. You can give it a sign-in account right after.',
+  'team.restaurantNameAr': 'Name — Arabic',
+  'team.restaurantNameEn': 'Name — English',
+  'team.restaurantConflict': 'A restaurant with that name already exists.',
+  'team.restaurantFailed': 'Could not create the restaurant. Try again.',
+  'team.accountFor': 'This account will belong to {restaurant}.',
+
   'settings.title': 'Settings',
   'settings.subtitle':
     'The store profile, currency, tax and service tables the rest of the app reads.',
@@ -879,6 +890,17 @@ const ar: Record<TranslationKey, string> = {
   'team.passwordShort': 'كلمة المرور تحتاج ٨ أحرف على الأقل.',
   'team.conflict': 'اسم المستخدم مستخدم بالفعل، أو هذا التغيير سيقفل المتجر.',
   'team.count': '{count} أشخاص',
+  'team.restaurant': 'المطعم',
+  'team.addRestaurant': 'إضافة مطعم',
+  'team.restaurantTitle': 'إضافة مطعم',
+  'team.restaurantHint':
+    'يبدأ المطعم الجديد فارغًا: قائمته وتذاكره وزبائنه وفريقه. ويمكنك إنشاء حساب دخول له بعد ذلك.',
+  'team.restaurantNameAr': 'الاسم — بالعربية',
+  'team.restaurantNameEn': 'الاسم — بالإنجليزية',
+  'team.restaurantConflict': 'يوجد مطعم بهذا الاسم بالفعل.',
+  'team.restaurantFailed': 'تعذر إنشاء المطعم. حاول مرة أخرى.',
+  'team.accountFor': 'هذا الحساب سيتبع {restaurant}.',
+
   'settings.title': 'الإعدادات',
   'settings.subtitle':
     'بيانات المتجر والعملة والضريبة والطاولات التي يقرأها باقي النظام.',

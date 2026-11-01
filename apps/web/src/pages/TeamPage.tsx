@@ -1,7 +1,8 @@
 import { Pencil, Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import RestaurantDialog from '../components/team/RestaurantDialog';
 import StaffDialog from '../components/team/StaffDialog';
-import { api, type StaffMember, type TeamData } from '../lib/api';
+import { api, type Restaurant, type StaffMember, type TeamData } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatNumber } from '../lib/format';
 import { useLang } from '../lib/i18n';
@@ -32,13 +33,17 @@ export default function TeamPage() {
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [nonce, setNonce] = useState(0);
+  // An admin can look at any restaurant's roster; everyone else only sees their
+  // own, which is what the API returns when no restaurant is asked for.
+  const [restaurantId, setRestaurantId] = useState<number | null>(null);
+  const [restaurantOpen, setRestaurantOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(false);
     api
-      .team()
+      .team(restaurantId ?? undefined)
       .then((result) => {
         if (!cancelled) setTeam(result);
       })
@@ -51,7 +56,7 @@ export default function TeamPage() {
     return () => {
       cancelled = true;
     };
-  }, [nonce]);
+  }, [nonce, restaurantId]);
 
   const rows = useMemo(() => {
     if (!team) return [];
@@ -83,6 +88,15 @@ export default function TeamPage() {
     setDialogOpen(true);
   };
 
+  const restaurantLabel = (row: Restaurant) =>
+    lang === 'ar' ? row.name_ar : row.name_en;
+
+  const handleRestaurantCreated = (created: Restaurant) => {
+    // Open the new restaurant's roster, so the next step is its first account.
+    setRestaurantId(created.id);
+    setDialogOpen(false);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -103,6 +117,37 @@ export default function TeamPage() {
           </button>
         ) : null}
       </div>
+
+      {isAdmin && team?.restaurants ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="mb-1 block text-[13px] font-medium text-ink-2">
+              {t('team.restaurant')}
+            </span>
+            <select
+              className="field h-11 min-w-[200px]"
+              aria-label={t('team.restaurant')}
+              value={team.restaurant.id}
+              onChange={(event) => setRestaurantId(Number(event.target.value))}
+              disabled={loading}
+            >
+              {team.restaurants.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {restaurantLabel(row)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setRestaurantOpen(true)}
+            className="btn-quiet h-11 min-h-0 px-3 text-[14px]"
+          >
+            <Plus size={16} />
+            {t('team.addRestaurant')}
+          </button>
+        </div>
+      ) : null}
 
       {team ? (
         <div className="grid grid-cols-3 gap-2">
@@ -284,8 +329,15 @@ export default function TeamPage() {
       <StaffDialog
         open={dialogOpen}
         member={editing}
+        restaurant={team?.restaurant ?? null}
         onClose={() => setDialogOpen(false)}
         onSaved={applyTeam}
+      />
+
+      <RestaurantDialog
+        open={restaurantOpen}
+        onClose={() => setRestaurantOpen(false)}
+        onCreated={handleRestaurantCreated}
       />
     </div>
   );

@@ -333,6 +333,12 @@ export type ReportData = {
 
 export type StaffRole = 'admin' | 'owner' | 'manager' | 'cashier' | 'kitchen';
 
+export type Restaurant = {
+  id: number;
+  name_ar: string;
+  name_en: string;
+};
+
 export type StaffMember = {
   id: number;
   name: string;
@@ -342,11 +348,15 @@ export type StaffMember = {
   has_login: boolean;
   onboarded: boolean;
   is_active: boolean;
+  restaurant_id: number;
   created_at: string | null;
 };
 
 export type TeamData = {
   staff: StaffMember[];
+  restaurant: Restaurant;
+  /** Only an admin receives the picker list. */
+  restaurants?: Restaurant[];
   summary: {
     total: number;
     active: number;
@@ -361,7 +371,11 @@ export type StaffInput = {
   is_active?: boolean;
   username?: string;
   password?: string;
+  /** The restaurant the account belongs to; admins only. */
+  restaurant_id?: number;
 };
+
+export type RestaurantInput = { name_ar: string; name_en: string };
 
 export type AuthUser = {
   id: number;
@@ -569,7 +583,15 @@ export const api = {
   report: (days: number) => request<ReportData>(`/api/reports?days=${days}`),
   reportCsvUrl: (days: number) => `/api/reports/export.csv?days=${days}`,
 
-  team: () => request<TeamData>('/api/team'),
+  team: (restaurantId?: number) =>
+    request<TeamData>(
+      restaurantId ? `/api/team?restaurant_id=${restaurantId}` : '/api/team',
+    ),
+  createRestaurant: (body: RestaurantInput) =>
+    request<{ restaurants: Restaurant[]; created: Restaurant }>(
+      '/api/restaurants',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
   createStaff: (body: StaffInput) =>
     request<TeamData>('/api/team', {
       method: 'POST',

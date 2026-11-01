@@ -20,6 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from .db import SessionLocal, get_db
+from .deps import set_request_tenant
 from .models import AuthSession, Staff
 
 COOKIE_NAME = "sufra_session"
@@ -152,6 +153,9 @@ class SessionGate(BaseHTTPMiddleware):
         # The dependency below re-reads the row on the request's own session.
         request.state.staff_id = staff.id
         request.state.session_token = token
+        # Every `/api` handler then reads this member's own restaurant, so two
+        # restaurants signing in on the same API never see each other's data.
+        set_request_tenant(staff.tenant_id)
         return await call_next(request)
 
 
