@@ -139,6 +139,8 @@ def test_a_guest_follows_their_ticket_by_its_number(anonymous):
     )
     assert placed.status_code == 201, placed.text
     number = placed.json()["number"]
+    # Three plates on the ticket: 6 + 2 x 3 minutes in the kitchen's own clock.
+    assert placed.json()["eta_minutes"] == 12
 
     db = SessionLocal()
     try:
@@ -159,6 +161,10 @@ def test_a_guest_follows_their_ticket_by_its_number(anonymous):
         assert ticket["table_no"] == 4
         assert ticket["item_count"] == 3
         assert ticket["currency"]
+        # The wait a guest watches on the menu bar: the estimate for the plates
+        # and what is left of it, which for a fresh ticket is the whole wait.
+        assert ticket["eta_minutes"] == 12
+        assert 0 <= ticket["minutes_left"] <= 12
         assert ticket["items"], "the guest sees their own plates"
         # A number is not an identity: nothing about the guest travels.
         assert "customer_name" not in ticket

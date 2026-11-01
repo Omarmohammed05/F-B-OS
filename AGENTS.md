@@ -707,7 +707,21 @@ service.
   branch; anything else is **404**. The page is `/m/<token>/order/<number>`
   (`pages/PublicOrderPage.tsx`), linked from the receipt after a guest sends
   (`m.track`), and it rereads the ticket every 10s until it is served or
-  cancelled. Nothing is stored for it.
+  cancelled. Nothing about the guest is stored for it.
+- **The wait is derived, never stored.** `public_menu.py` carries
+  `estimate_minutes()` (6 minutes + 2 a plate, capped at 30) and
+  `minutes_left()` (that estimate minus the time since `orders.placed_at`, 0 once
+  the ticket is served or cancelled; `placed_at` is naive UTC because the
+  database's `now()` runs in UTC). Both the receipt (`eta_minutes`) and the
+  status payload (`eta_minutes`, `minutes_left`) answer them, and
+  `components/public/TimeLeft.tsx` counts the number down on the guest's phone
+  between reads — the API is the only clock.
+- The guest's own last ticket number is kept in `localStorage`
+  (`sufra.tracked.<token>`, written on send, cleared when the ticket is served,
+  cancelled or unknown to that menu), so `/m/<token>` keeps a tracking bar pinned
+  above the cart with the number and the minutes left, linking to the tracking
+  page. A guest who goes back to the menu therefore never loses their ticket; a
+  phone that scanned a different branch's stand does not see one.
 - **The counter finds a ticket by the number off the receipt**: the `/orders`
   header has a number field that opens that ticket's detail sheet, or says
   `orders.trackMissing` when the number is not on this branch's 200 newest

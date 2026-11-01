@@ -11,6 +11,7 @@ endpoint has its own rate budget (see `security.RULES`).
 """
 
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -25,6 +26,38 @@ router = APIRouter(prefix="/api/public", tags=["public"])
 
 # What the ticket says about where it came from, next to the guest's own note.
 SOURCE = "QR menu"
+
+# The kitchen's clock, as a guest reads it: a short ticket beats a plate count, a
+# long one is pushed out, and nothing promises more than half an hour. The figure
+# is derived from the ticket, never stored — the counter still decides when the
+# food is actually ready.
+PREP_BASE_MINUTES = 6
+PREP_MINUTES_PER_PLATE = 2
+PREP_MAX_MINUTES = 30
+
+
+def estimate_minutes(plate_count: int) -> int:
+    """How long this ticket should take, from the plates it carries."""
+    return min(
+        PREP_MAX_MINUTES,
+        PREP_BASE_MINUTES + PREP_MINUTES_PER_PLATE * max(1, plate_count),
+    )
+
+
+def minutes_left(order: Order, plate_count: int) -> int:
+    """Minutes still on the clock; 0 once the ticket is served or cancelled.
+
+    `orders.placed_at` is a naive column filled by the database's own `now()`,
+    which runs in UTC here, so the elapsed time is measured the same way.
+    """
+    if order.status in ("served", "cancelled"):
+        return 0
+    estimate = estimate_minutes(plate_count)
+    if order.placed_at is None:
+        return estimate
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    elapsed = (now - order.placed_at).total_seconds() / 60
+    return max(0, round(estimate - elapsed))
 
 
 class PublicOrderIn(BaseModel):
@@ -133,6 +166,7 @@ def public_order_status(token: str, number: str, db: Session = Depends(get_db)):
         .order_by(OrderItem.id)
         .all()
     )
+    plates = sum(item.qty for item in items)
     return {
         "number": order.number,
         "status": order.status,
@@ -140,7 +174,11 @@ def public_order_status(token: str, number: str, db: Session = Depends(get_db)):
         "table_no": order.table_no,
         "currency": tenant.currency,
         "total": order.total,
-        "item_count": sum(item.qty for item in items),
+        "item_count": plates,
+        # The guest's own clock: how long this ticket should take and how much
+        # of it is left, so the menu and the tracking page tell one story.
+        "eta_minutes": estimate_minutes(plates),
+        "minutes_left": minutes_left(order, plates),
         "placed_at": order.placed_at.isoformat() if order.placed_at else None,
         "items": [
             {
@@ -181,10 +219,13 @@ def public_order(
         # so the counter can tell a self-ordered one from its own.
         note=f"{SOURCE} · {note}" if note else SOURCE,
     )
+    plates = sum(item.qty for item in items)
     return {
         "number": order.number,
         "channel": order.channel,
         "table_no": order.table_no,
         "total": order.total,
-        "item_count": sum(item.qty for item in items),
+        "item_count": plates,
+        # The receipt prints the wait the guest can watch on the menu bar.
+        "eta_minutes": estimate_minutes(plates),
     }

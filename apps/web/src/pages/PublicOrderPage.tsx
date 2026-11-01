@@ -1,7 +1,16 @@
-import { ArrowLeft, ArrowRight, Check, ChefHat, ShoppingBag, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChefHat,
+  Clock,
+  ShoppingBag,
+  X,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Ornament from '../components/public/Ornament';
+import TimeLeft from '../components/public/TimeLeft';
 import { publicMenuApi, type PublicOrderStatus } from '../lib/api';
 import { formatClock, formatCurrency, formatNumber } from '../lib/format';
 import { useLang, type TranslationKey } from '../lib/i18n';
@@ -143,6 +152,19 @@ export default function PublicOrderPage() {
               </p>
             </div>
           </div>
+
+          {cancelled || order.status === 'served' ? null : (
+            <div className="mt-4 flex items-center justify-between rounded-[12px] bg-surface-2 px-3 py-2">
+              <span className="flex items-center gap-1.5 text-[12px] text-ink-2">
+                <Clock size={13} />
+                {t('track.timeLeft')}
+              </span>
+              <TimeLeft
+                minutes={order.minutes_left}
+                className="text-[14px] font-semibold tabular-nums text-[color:var(--accent)]"
+              />
+            </div>
+          )}
 
           {cancelled ? null : (
             <ol className="mt-5 flex items-center gap-1.5">

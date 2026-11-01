@@ -325,6 +325,7 @@ export type PublicOrderReceipt = {
   table_no: number | null;
   total: number;
   item_count: number;
+  eta_minutes: number;
 };
 
 export type PublicOrderStatus = {
@@ -335,6 +336,8 @@ export type PublicOrderStatus = {
   currency: string;
   total: number;
   item_count: number;
+  eta_minutes: number;
+  minutes_left: number;
   placed_at: string | null;
   items: { name_ar: string; name_en: string; emoji: string; qty: number }[];
 };

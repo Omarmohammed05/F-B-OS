@@ -2,7 +2,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChefHat,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
+  Clock,
   Minus,
   Plus,
   RotateCcw,
@@ -15,6 +19,7 @@ import Sheet from '../components/Sheet';
 import ExploreGrid from '../components/public/ExploreGrid';
 import MenuItemRow from '../components/public/MenuItemRow';
 import Ornament from '../components/public/Ornament';
+import TimeLeft from '../components/public/TimeLeft';
 import {
   publicMenuApi,
   type PublicMenuData,
@@ -22,6 +27,33 @@ import {
 } from '../lib/api';
 import { formatCurrency } from '../lib/format';
 import { useLang } from '../lib/i18n';
+
+/** The guest's own last ticket on this menu, so a phone that reloads finds it. */
+const trackKey = (token: string) => `sufra.tracked.${token}`;
+
+function rememberedOrder(token: string): string | null {
+  try {
+    return window.localStorage.getItem(trackKey(token));
+  } catch {
+    return null;
+  }
+}
+
+function rememberOrder(token: string, number: string) {
+  try {
+    window.localStorage.setItem(trackKey(token), number);
+  } catch {
+    // A browser in private mode forgets it; the receipt still links to it.
+  }
+}
+
+function forgetOrder(token: string) {
+  try {
+    window.localStorage.removeItem(trackKey(token));
+  } catch {
+    // Nothing stored, nothing to clear.
+  }
+}
 
 /**
  * What a guest sees after scanning the stand on the table.
@@ -51,6 +83,10 @@ export default function PublicMenuPage() {
   const [receipt, setReceipt] = useState<PublicOrderReceipt | null>(null);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<number | null>(null);
+  const [tracked, setTracked] = useState<string | null>(() =>
+    rememberedOrder(token),
+  );
+  const [minutesLeft, setMinutesLeft] = useState<number | null>(null);
 
   const sections = useRef<Record<number, HTMLElement | null>>({});
 
@@ -185,6 +221,9 @@ export default function PublicMenuPage() {
         })),
       });
       setReceipt(order);
+      rememberOrder(token, order.number);
+      setTracked(order.number);
+      setMinutesLeft(order.eta_minutes);
       setCart({});
       setNote('');
       setReviewing(false);
@@ -201,6 +240,43 @@ export default function PublicMenuPage() {
       setSending(false);
     }
   };
+
+  // The ticket outlives the receipt: a guest who goes back to the menu keeps a
+  // bar with the number and the minutes left, following it until the plates land.
+  useEffect(() => {
+    if (!token || !tracked) {
+      setMinutesLeft(null);
+      return;
+    }
+    let cancelled = false;
+    const read = () =>
+      publicMenuApi
+        .track(token, tracked)
+        .then((order) => {
+          if (cancelled) return;
+          if (order.status === 'served' || order.status === 'cancelled') {
+            forgetOrder(token);
+            setTracked(null);
+            return;
+          }
+          setMinutesLeft(order.minutes_left);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          // Only a number this menu does not know is dropped; a flaky network
+          // keeps the bar and tries again with the next tick.
+          if (err instanceof Error && err.message.startsWith('404')) {
+            forgetOrder(token);
+            setTracked(null);
+          }
+        });
+    read();
+    const timer = window.setInterval(read, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [token, tracked]);
 
   if (failed) {
     return (
@@ -250,6 +326,10 @@ export default function PublicMenuPage() {
         <div>
           <p className="text-[22px] font-bold text-ink">{t('m.sent')}</p>
           <p className="mt-1 text-[14px] text-ink-2">{t('m.sentHint')}</p>
+          <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] font-semibold text-[color:var(--accent)]">
+            <Clock size={14} />
+            <TimeLeft minutes={receipt.eta_minutes} />
+          </p>
         </div>
         <div className="card w-full max-w-[380px] divide-y divide-line px-4 py-3 text-[14px]">
           <div className="flex items-center justify-between py-1.5">
@@ -294,8 +374,15 @@ export default function PublicMenuPage() {
     );
   }
 
+  const showTrack = Boolean(tracked && minutesLeft !== null);
+  const Chevron = lang === 'ar' ? ChevronLeft : ChevronRight;
+
   return (
-    <div className="guest-menu min-h-screen pb-28 text-ink">
+    <div
+      className={`guest-menu min-h-screen text-ink ${
+        showTrack && itemCount ? 'pb-44' : 'pb-28'
+      }`}
+    >
       <header className="relative overflow-hidden border-b border-line bg-surface">
         <span
           aria-hidden
@@ -461,19 +548,53 @@ export default function PublicMenuPage() {
         </footer>
       </main>
 
-      {itemCount ? (
+      {showTrack || itemCount ? (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur">
-          <button
-            type="button"
-            onClick={() => setReviewing(true)}
-            className="btn-primary mx-auto flex w-full max-w-[860px] items-center justify-between gap-3 rounded-full px-5"
-          >
-            <span className="flex items-center gap-2">
-              <ShoppingBag size={17} />
-              {t('m.review', { count: itemCount })}
-            </span>
-            <span className="tabular-nums">{money(total)}</span>
-          </button>
+          <div className="mx-auto flex w-full max-w-[860px] flex-col gap-2">
+            {showTrack ? (
+              <Link
+                to={`/m/${token}/order/${tracked}`}
+                className="card flex items-center gap-3 rounded-full border border-line px-3 py-2"
+              >
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                  style={{
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent)',
+                  }}
+                >
+                  <ChefHat size={16} strokeWidth={2} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-ink">
+                    {t('m.orderNumber')} #{tracked}
+                  </span>
+                  <TimeLeft
+                    minutes={minutesLeft ?? 0}
+                    className="block text-[12px] tabular-nums text-ink-2"
+                  />
+                </span>
+                <span className="flex shrink-0 items-center gap-0.5 text-[12px] font-semibold text-[color:var(--accent)]">
+                  {t('track.open')}
+                  <Chevron size={14} strokeWidth={2.2} />
+                </span>
+              </Link>
+            ) : null}
+
+            {itemCount ? (
+              <button
+                type="button"
+                onClick={() => setReviewing(true)}
+                className="btn-primary flex w-full items-center justify-between gap-3 rounded-full px-5"
+              >
+                <span className="flex items-center gap-2">
+                  <ShoppingBag size={17} />
+                  {t('m.review', { count: itemCount })}
+                </span>
+                <span className="tabular-nums">{money(total)}</span>
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
