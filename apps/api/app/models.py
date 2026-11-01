@@ -158,6 +158,9 @@ class Customer(Base):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     phone: Mapped[str] = mapped_column(String(40), default="")
+    # Opaque public handle (32 hex characters). Anything that leaves the building
+    # — a Wallet barcode, a guest-facing card link — carries this, never the id.
+    qr_token: Mapped[str] = mapped_column(String(32), default="", index=True)
     email: Mapped[str] = mapped_column(String(160), default="")
     notes: Mapped[str] = mapped_column(String(240), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -193,7 +196,28 @@ class Order(Base):
     tax: Mapped[float] = mapped_column(Float, default=0)
     total: Mapped[float] = mapped_column(Float, default=0)
     note: Mapped[str] = mapped_column(String(240), default="")
+    # Empty unless the caller sent an Idempotency-Key; unique per store when set.
+    idempotency_key: Mapped[str] = mapped_column(String(64), default="", index=True)
     placed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class AuditLog(Base):
+    """Append-only: who did what to money, stock or access, and when.
+
+    Nothing in the API updates or deletes a row here. `actor` is the caller's
+    address until staff sign-in exists, then the authenticated staff member.
+    """
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), index=True)
+    action: Mapped[str] = mapped_column(String(40))
+    entity: Mapped[str] = mapped_column(String(40), default="")
+    entity_id: Mapped[int] = mapped_column(Integer, default=0)
+    detail: Mapped[str] = mapped_column(String(300), default="")
+    actor: Mapped[str] = mapped_column(String(60), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class OrderItem(Base):

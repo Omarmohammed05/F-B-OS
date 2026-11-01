@@ -12,6 +12,7 @@ from .dashboard import build_dashboard
 from .db import Base, engine, ensure_columns, get_db
 from .deps import current_tenant
 from .models import SetupTask, Tenant
+from .routes import audit as audit_routes
 from .routes import customers as customer_routes
 from .routes import inventory as inventory_routes
 from .routes import loyalty as loyalty_routes
@@ -21,6 +22,7 @@ from .routes import pos as pos_routes
 from .routes import reports as report_routes
 from .routes import settings as setting_routes
 from .routes import team as team_routes
+from .security import Hardening
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -54,6 +56,8 @@ app.add_middleware(
 )
 
 
+app.add_middleware(Hardening)
+
 app.include_router(menu_routes.router)
 app.include_router(inventory_routes.router)
 app.include_router(pos_routes.router)
@@ -63,6 +67,7 @@ app.include_router(loyalty_routes.router)
 app.include_router(report_routes.router)
 app.include_router(team_routes.router)
 app.include_router(setting_routes.router)
+app.include_router(audit_routes.router)
 
 
 def serialize_setup(db: Session, tenant: Tenant) -> dict:

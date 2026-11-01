@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import current_tenant
 from ..models import Customer, LoyaltyCard, Order, Tenant
+from ..security import ensure_token
 from .orders import order_items, serialize_order
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -104,7 +105,9 @@ def list_customers(db: Session = Depends(get_db)):
 @router.post("", status_code=201)
 def create_customer(payload: CustomerIn, db: Session = Depends(get_db)):
     tenant = current_tenant(db)
-    db.add(Customer(tenant_id=tenant.id, **payload.model_dump()))
+    row = Customer(tenant_id=tenant.id, **payload.model_dump())
+    ensure_token(row)
+    db.add(row)
     db.commit()
     return serialize_customers(db, tenant)
 

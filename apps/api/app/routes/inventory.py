@@ -1,13 +1,15 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .. import audit
 from ..db import get_db
 from ..deps import current_tenant
 from ..models import Ingredient, RecipeLine, StockMovement, Tenant
+from ..security import client_host
 from ..stock import is_low, recent_movements, record
 
 router = APIRouter(prefix="/api/ingredients", tags=["inventory"])
@@ -123,7 +125,10 @@ def create_ingredient(payload: IngredientIn, db: Session = Depends(get_db)):
 
 @router.patch("/{ingredient_id}")
 def update_ingredient(
-    ingredient_id: int, patch: IngredientPatch, db: Session = Depends(get_db)
+    ingredient_id: int,
+    patch: IngredientPatch,
+    request: Request,
+    db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     ingredient = get_ingredient(db, tenant, ingredient_id)
@@ -140,13 +145,29 @@ def update_ingredient(
             "adjustment",
             note="manual edit",
         )
+    if new_stock is not None or "unit_cost" in changes:
+        # Stock corrections and cost edits are the two ways a plate quietly
+        # changes value, so both leave a trace.
+        audit.log(
+            db,
+            tenant.id,
+            "ingredient.edit",
+            "ingredient",
+            ingredient.id,
+            f"{ingredient.name_en}: "
+            + ", ".join(f"{field}={value}" for field, value in changes.items()),
+            actor=client_host(request),
+        )
     db.commit()
     return serialize_inventory(db, tenant)
 
 
 @router.post("/{ingredient_id}/movements", status_code=201)
 def create_movement(
-    ingredient_id: int, payload: MovementIn, db: Session = Depends(get_db)
+    ingredient_id: int,
+    payload: MovementIn,
+    request: Request,
+    db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     ingredient = get_ingredient(db, tenant, ingredient_id)
@@ -157,6 +178,16 @@ def create_movement(
         )
     delta = payload.qty if payload.reason == "purchase" else -payload.qty
     record(db, ingredient, delta, payload.reason, note=payload.note)
+    # The ledger row explains the balance; the trail explains who moved it.
+    audit.log(
+        db,
+        tenant.id,
+        f"stock.{payload.reason}",
+        "ingredient",
+        ingredient.id,
+        f"{ingredient.name_en} {delta:+.3f} {ingredient.unit} {payload.note}".strip(),
+        actor=client_host(request),
+    )
     db.commit()
     return serialize_inventory(db, tenant)
 

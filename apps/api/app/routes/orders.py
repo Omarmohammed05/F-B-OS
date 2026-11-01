@@ -1,15 +1,18 @@
 from collections import defaultdict
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import audit
 from ..db import get_db
 from ..deps import current_tenant
 from ..loyalty import award_stamp
 from ..models import Customer, Order, OrderItem, Product, Tenant
+from ..security import client_host, ensure_token
 from ..stock import deduct_for_order
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -118,6 +121,7 @@ def resolve_customer(
     )
     if customer is None:
         customer = Customer(tenant_id=tenant.id, name=cleaned)
+        ensure_token(customer)
         db.add(customer)
         db.flush()
     return customer
@@ -162,9 +166,34 @@ def list_orders(db: Session = Depends(get_db)):
     return {"orders": [serialize_order(order, grouped[order.id]) for order in orders]}
 
 
+def existing_for_key(db: Session, tenant: Tenant, key: str) -> Order | None:
+    """The ticket a retried send already created, so a repeat never doubles it."""
+    if not key:
+        return None
+    order = (
+        db.query(Order)
+        .filter(Order.tenant_id == tenant.id, Order.idempotency_key == key)
+        .first()
+    )
+    if order is not None:
+        return order
+    return None
+
+
 @router.post("", status_code=201)
-def create_order(payload: OrderIn, db: Session = Depends(get_db)):
+def create_order(
+    payload: OrderIn, request: Request, db: Session = Depends(get_db)
+):
     tenant = current_tenant(db)
+
+    # A tablet that loses its reply and retries presents the same key: answer
+    # with the ticket it already has instead of charging the guest twice.
+    idem_key = (request.headers.get("idempotency-key") or "").strip()
+    if len(idem_key) > 64:
+        raise HTTPException(status_code=400, detail="Idempotency-Key is too long.")
+    repeated = existing_for_key(db, tenant, idem_key)
+    if repeated is not None:
+        return serialize_one(db, repeated)
 
     if payload.channel == "dine_in" and payload.table_no is None:
         raise HTTPException(status_code=400, detail="Choose a table for dine-in orders.")
@@ -206,6 +235,7 @@ def create_order(payload: OrderIn, db: Session = Depends(get_db)):
         status="new",
         payment_method=payload.payment_method,
         note=payload.note.strip(),
+        idempotency_key=idem_key,
     )
 
     subtotal = 0.0
@@ -230,18 +260,31 @@ def create_order(payload: OrderIn, db: Session = Depends(get_db)):
     order.total = round(order.subtotal + order.tax, 2)
 
     db.add(order)
-    db.flush()
-    for item in items:
-        item.order_id = order.id
-        db.add(item)
-    db.commit()
+    try:
+        db.flush()
+        for item in items:
+            item.order_id = order.id
+            db.add(item)
+        db.commit()
+    except IntegrityError:
+        # Two identical sends raced: the unique key kept one, so return that one.
+        db.rollback()
+        winner = existing_for_key(db, tenant, idem_key)
+        if winner is None:
+            raise
+        return serialize_one(db, winner)
     db.refresh(order)
 
     return serialize_order(order, items)
 
 
 @router.patch("/{order_id}")
-def update_order(order_id: int, patch: OrderPatch, db: Session = Depends(get_db)):
+def update_order(
+    order_id: int,
+    patch: OrderPatch,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     tenant = current_tenant(db)
     order = get_order(db, tenant, order_id)
 
@@ -251,7 +294,18 @@ def update_order(order_id: int, patch: OrderPatch, db: Session = Depends(get_db)
             detail=f"An order that is {order.status} cannot move to {patch.status}.",
         )
 
+    previous = order.status
     order.status = patch.status
+    # A void or a serve is exactly what a fraud review asks about later.
+    audit.log(
+        db,
+        tenant.id,
+        f"order.{patch.status}",
+        "order",
+        order.id,
+        f"#{order.number} {previous} → {patch.status}, total {order.total:.2f}",
+        actor=client_host(request),
+    )
     if order.status == "served":
         # A served ticket is the visit a loyalty card counts, and the sale that
         # consumes the recipe ingredients on the guest's plate.

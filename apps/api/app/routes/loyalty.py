@@ -1,14 +1,15 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import wallet
+from .. import audit, wallet
 from ..db import get_db
 from ..deps import current_tenant
 from ..loyalty import card_points, get_program, push_wallet, serialize_loyalty
 from ..models import Customer, LoyaltyCard, Tenant
+from ..security import client_host, ensure_token
 
 router = APIRouter(prefix="/api/loyalty", tags=["loyalty"])
 
@@ -69,16 +70,25 @@ def enroll_card(payload: CardIn, db: Session = Depends(get_db)):
 
 
 @router.delete("/cards/{card_id}")
-def remove_card(card_id: int, db: Session = Depends(get_db)):
+def remove_card(card_id: int, request: Request, db: Session = Depends(get_db)):
     tenant = current_tenant(db)
     card = get_card(db, tenant, card_id)
+    audit.log(
+        db,
+        tenant.id,
+        "loyalty.remove",
+        "loyalty_card",
+        card.id,
+        f"card of customer {card.customer_id} removed, {card.stamps} stamps lost",
+        actor=client_host(request),
+    )
     db.delete(card)
     db.commit()
     return serialize_loyalty(db, tenant)
 
 
 @router.post("/cards/{card_id}/stamp")
-def stamp_card(card_id: int, db: Session = Depends(get_db)):
+def stamp_card(card_id: int, request: Request, db: Session = Depends(get_db)):
     tenant = current_tenant(db)
     card = get_card(db, tenant, card_id)
     program = get_program(db, tenant)
@@ -88,13 +98,22 @@ def stamp_card(card_id: int, db: Session = Depends(get_db)):
         )
     card.stamps += 1
     card.last_stamp_at = datetime.now()
+    audit.log(
+        db,
+        tenant.id,
+        "loyalty.stamp",
+        "loyalty_card",
+        card.id,
+        f"stamp {card.stamps}/{program.stamps_target}",
+        actor=client_host(request),
+    )
     db.commit()
     push_wallet(db, tenant, card)
     return serialize_loyalty(db, tenant)
 
 
 @router.post("/cards/{card_id}/redeem")
-def redeem_card(card_id: int, db: Session = Depends(get_db)):
+def redeem_card(card_id: int, request: Request, db: Session = Depends(get_db)):
     tenant = current_tenant(db)
     card = get_card(db, tenant, card_id)
     program = get_program(db, tenant)
@@ -102,6 +121,16 @@ def redeem_card(card_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="This card is not full yet.")
     card.stamps = 0
     card.rewards_redeemed += 1
+    # A free drink leaves the building here: the one entry worth reviewing.
+    audit.log(
+        db,
+        tenant.id,
+        "loyalty.redeem",
+        "loyalty_card",
+        card.id,
+        f"reward '{program.reward_en}' given, redemption #{card.rewards_redeemed}",
+        actor=client_host(request),
+    )
     db.commit()
     push_wallet(db, tenant, card)
     return serialize_loyalty(db, tenant)
@@ -125,13 +154,16 @@ def wallet_link(card_id: int, db: Session = Depends(get_db)):
     customer = db.query(Customer).filter_by(id=card.customer_id).first()
     if customer is None:
         raise HTTPException(status_code=404, detail="Customer not found")
+    if not customer.qr_token:
+        ensure_token(customer)
+        db.commit()
     program = get_program(db, tenant)
     try:
         wallet.ensure_class(cfg, tenant.name_ar or tenant.name_en)
         url = wallet.save_url(
             cfg,
             card_id=card.id,
-            customer_id=customer.id,
+            customer_token=customer.qr_token,
             customer_name=customer.name,
             points=card_points(db, tenant.id, program, customer.id),
             stamps=card.stamps,
@@ -144,7 +176,9 @@ def wallet_link(card_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/program")
-def update_program(patch: ProgramPatch, db: Session = Depends(get_db)):
+def update_program(
+    patch: ProgramPatch, request: Request, db: Session = Depends(get_db)
+):
     tenant = current_tenant(db)
     program = get_program(db, tenant)
     changes = patch.model_dump(exclude_unset=True, exclude_none=True)
@@ -157,5 +191,14 @@ def update_program(patch: ProgramPatch, db: Session = Depends(get_db)):
         for card in db.query(LoyaltyCard).filter_by(tenant_id=tenant.id).all():
             card.stamps = min(card.stamps, program.stamps_target)
 
+    audit.log(
+        db,
+        tenant.id,
+        "loyalty.program",
+        "loyalty_program",
+        program.id,
+        ", ".join(f"{field}={value}" for field, value in changes.items()),
+        actor=client_host(request),
+    )
     db.commit()
     return serialize_loyalty(db, tenant)

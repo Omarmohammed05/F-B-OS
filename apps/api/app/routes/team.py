@@ -1,13 +1,15 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .. import audit
 from ..db import get_db
 from ..deps import current_tenant
 from ..models import Staff, Tenant
+from ..security import client_host
 
 router = APIRouter(prefix="/api/team", tags=["team"])
 
@@ -95,7 +97,9 @@ def create_staff(payload: StaffIn, db: Session = Depends(get_db)):
 
 
 @router.patch("/{staff_id}")
-def update_staff(staff_id: int, patch: StaffPatch, db: Session = Depends(get_db)):
+def update_staff(
+    staff_id: int, patch: StaffPatch, request: Request, db: Session = Depends(get_db)
+):
     tenant = current_tenant(db)
     row = get_staff(db, tenant, staff_id)
     changes = patch.model_dump(exclude_unset=True)
@@ -111,18 +115,39 @@ def update_staff(staff_id: int, patch: StaffPatch, db: Session = Depends(get_db)
 
     for field, value in changes.items():
         setattr(row, field, value)
+    if {"role", "is_active"} & changes.keys():
+        # Who can open the till is the access question a review asks first.
+        audit.log(
+            db,
+            tenant.id,
+            "staff.access",
+            "staff",
+            row.id,
+            f"{row.name}: "
+            + ", ".join(f"{field}={value}" for field, value in changes.items()),
+            actor=client_host(request),
+        )
     db.commit()
     return serialize_team(db, tenant)
 
 
 @router.delete("/{staff_id}")
-def delete_staff(staff_id: int, db: Session = Depends(get_db)):
+def delete_staff(staff_id: int, request: Request, db: Session = Depends(get_db)):
     tenant = current_tenant(db)
     row = get_staff(db, tenant, staff_id)
     if row.role == "owner" and row.is_active and active_owners(db, tenant, row.id) == 0:
         raise HTTPException(
             status_code=409, detail="The store needs at least one active owner."
         )
+    audit.log(
+        db,
+        tenant.id,
+        "staff.delete",
+        "staff",
+        row.id,
+        f"{row.name} ({row.role}) removed",
+        actor=client_host(request),
+    )
     db.delete(row)
     db.commit()
     return serialize_team(db, tenant)

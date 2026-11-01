@@ -48,7 +48,8 @@ a **live dashboard**, a **settings** surface that edits the store itself,
 API: `/api/menu`, `/api/menu/categories`, `/api/menu/products`,
 `/api/menu/products/{id}/recipe`, `/api/ingredients`, `/api/pos`, `/api/orders`,
 `/api/customers`, `/api/loyalty`, `/api/ingredients/{id}/movements`,
-`/api/reports`, `/api/reports/export.csv`, `/api/team`, `/api/settings` (interactive docs at http://localhost:8000/docs).
+`/api/reports`, `/api/reports/export.csv`, `/api/team`, `/api/settings`,
+`/api/audit` (interactive docs at http://localhost:8000/docs).
 
 ## Stack
 
@@ -73,6 +74,20 @@ seeds the demo store "Qahwa House" / "بيت القهوة").
 ```bash
 docker compose -f docker-compose.base44.yml ps      # service health
 docker compose -f docker-compose.base44.yml logs -f api
+```
+
+## Security
+
+`SECURITY.md` maps the hardening plan onto this stack item by item. In short:
+every query is scoped by the store the API resolves from the database, money is
+always recomputed server-side, `POST /api/orders` accepts an `Idempotency-Key`,
+business flows carry their own rate limits (429 + `Retry-After`), and the actions
+that move money, stock or access leave append-only `audit_logs` rows
+(`GET /api/audit`). Staff sign-in and roles are the outstanding item before a real
+restaurant goes live.
+
+```bash
+docker compose -f docker-compose.base44.yml exec -T api python -m pytest tests -q
 ```
 
 ## Languages and theme

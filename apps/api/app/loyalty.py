@@ -99,7 +99,7 @@ def push_wallet(db: Session, tenant: Tenant, card: LoyaltyCard) -> None:
         wallet.push_object(
             cfg,
             card_id=card.id,
-            customer_id=customer.id,
+            customer_token=customer.qr_token or str(customer.id),
             customer_name=customer.name,
             points=card_points(db, tenant.id, program, customer.id),
             stamps=card.stamps,

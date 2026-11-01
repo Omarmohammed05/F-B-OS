@@ -1,11 +1,14 @@
 # AGENTS.md — Sufra OS
 
-Phases 0–8: foundation, menu management, the recipe builder, the POS, the orders
+Phases 0–9: foundation, menu management, the recipe builder, the POS, the orders
 board, the customer book, real reports, the team roster, a live dashboard, the
-store settings surface, loyalty stamp cards with Google Wallet passes and the
-stock ledger (automatic deduction on served tickets) are all working features. Every
-navigation destination now has a real page, so the old `ModulePage` placeholder
-and `lib/modules.ts` are gone — a URL that matches no route renders `NotFound`.
+store settings surface, loyalty stamp cards with Google Wallet passes, the stock
+ledger (automatic deduction on served tickets) and the security hardening pass
+(rate limits, audit trail, idempotent tickets, opaque guest handles) are all
+working features. Every navigation destination now has a real page, so the old
+`ModulePage` placeholder and `lib/modules.ts` are gone — a URL that matches no
+route renders `NotFound`. `SECURITY.md` maps the hardening plan item by item and
+states what is still outstanding (staff sign-in and roles, above all).
 
 ## Run and verify
 
@@ -25,6 +28,7 @@ curl -s localhost:3000/api/loyalty | head -c 200          # program + member car
 curl -s localhost:3000/api/ingredients | head -c 300      # stock balances + ledger
 docker compose -f docker-compose.base44.yml exec web npx tsc --noEmit
 docker compose -f docker-compose.base44.yml exec web npm run build
+docker compose -f docker-compose.base44.yml exec -T api python -m pytest tests -q
 ```
 
 There are no host language runtimes — run every node/python command inside its
@@ -375,3 +379,49 @@ service.
   (`components/inventory/StockMoveDialog.tsx`, delivery or waste) and the stock
   ledger card. The ingredient sheet gained the par-level field. Row action labels
   include the ingredient name so each is individually reachable.
+
+## Phase 9: security hardening
+
+- `SECURITY.md` is the checklist the plan asks for: every item marked done, not
+  applicable (with the reason) or outstanding. Keep it current — the release gate
+  at its end is the honest answer to "are we safe to launch".
+- **There is still no staff sign-in.** `deps.current_tenant` resolves the store
+  from the database, never from the request, so no endpoint can be pointed at
+  another store's data; but every endpoint is open to anyone who reaches the app.
+  Roles, PINs, blind close and per-role field hiding all wait on that one change.
+- `apps/api/app/security.py` holds two things: the `Hardening` middleware (rate
+  limits + response headers) and the small helpers `new_token()` (128-bit hex
+  handle) and `client_host()`. Budgets are a tuple of `Rule`s; the first matching
+  rule wins, so keep the specific ones above the catch-all. Counters are per
+  process — several workers would need Redis.
+- Rate limits: 5/hour per card on `wallet-link`, 5/hour per caller on the CSV
+  export, 120/min on `POST /api/orders`, 300/min on any other mutation. They answer
+  **429** with `Retry-After`. Behind the Vite proxy every caller shares one source
+  address, so budgets are effectively per store until sign-in exists.
+- `apps/api/app/audit.py` writes `audit_logs` rows (append-only, read at
+  `GET /api/audit`) in the same transaction as the change they describe: order
+  served/cancelled, stock purchase/waste, ingredient edit, product price,
+  staff access/delete, settings update, loyalty stamp/redeem/remove/program. The
+  `actor` column carries the caller's address until sign-in can name a person.
+  Add a `log()` call next to any new action that moves money, stock or access.
+- `POST /api/orders` honours an optional `Idempotency-Key` header (≤64 chars):
+  the same key returns the ticket it already made, and
+  `ux_orders_idempotency` (unique on `tenant_id, idempotency_key` where the key is
+  not empty) settles a race. The POS does not send one yet; a tablet that retries
+  is the reason the endpoint accepts it.
+- Guests carry `customers.qr_token`, a 32-hex handle minted at creation and
+  backfilled for existing rows by `BACKFILLS` in `db.py` (runs on every boot, only
+  touches empty values). The Wallet barcode and `accountId` use it instead of the
+  customer id, and a pass carries no phone number or email.
+- Tests live in `apps/api/tests/` and run in the api container (`pytest tests -q`,
+  20 checks). They use the app's own database, so each one creates uniquely named
+  rows and deletes exactly those again — the seeded store must be back at 8 orders,
+  5 guests, 10 products, 12 ingredients, 1 tenant, 0 audit rows, 0 movements after
+  a run. Check with the counts in `psql` if a test ever fails halfway.
+- `pytest` and `httpx` are in `requirements.txt`, so the api image needs a rebuild
+  after a dependency change: `docker compose -f docker-compose.base44.yml up -d
+  --build api`.
+- Security headers are set by the middleware, except **CSP**: the SPA is served by
+  the Vite dev server, so a strict policy belongs in front of a production build
+  (reverse proxy or CDN), not in `vite.config.ts` where it would fight HMR.
+

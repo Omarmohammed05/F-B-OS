@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .. import audit
 from ..db import get_db
 from ..deps import current_tenant
 from ..models import DailyMetric, Order, Tenant
+from ..security import client_host
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -59,7 +61,9 @@ def get_settings(db: Session = Depends(get_db)):
 
 
 @router.patch("")
-def update_settings(patch: SettingsIn, db: Session = Depends(get_db)):
+def update_settings(
+    patch: SettingsIn, request: Request, db: Session = Depends(get_db)
+):
     tenant = current_tenant(db)
     changes = patch.model_dump(exclude_unset=True, exclude_none=True)
 
@@ -86,5 +90,15 @@ def update_settings(patch: SettingsIn, db: Session = Depends(get_db)):
         else:
             metrics.total_tables = changes["table_count"]
 
+    # Tax rate, currency and the store name change what every new ticket says.
+    audit.log(
+        db,
+        tenant.id,
+        "settings.update",
+        "tenant",
+        tenant.id,
+        ", ".join(f"{field}={value}" for field, value in changes.items()),
+        actor=client_host(request),
+    )
     db.commit()
     return serialize_settings(db, tenant)

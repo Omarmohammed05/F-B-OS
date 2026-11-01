@@ -241,23 +241,26 @@ def _object_payload(
     cfg: dict,
     *,
     card_id: int,
-    customer_id: int,
+    customer_token: str,
     customer_name: str,
     points: int,
     stamps: int,
     target: int,
     reward: str,
 ) -> dict:
+    # The pass carries an opaque 32-hex handle, never the customer's row id: a
+    # printed barcode must not enumerate the guest book. It also carries no
+    # phone number or email — a pass is a public object on the guest's phone.
     return {
         "id": object_id(cfg, card_id),
         "classId": class_id(cfg),
         "state": "ACTIVE",
-        "accountId": str(customer_id),
+        "accountId": customer_token,
         "accountName": customer_name,
         "barcode": {
             "type": "QR_CODE",
-            "value": f"sufra-{customer_id}",
-            "alternateText": str(customer_id),
+            "value": f"sufra-{customer_token}",
+            "alternateText": customer_token[:8].upper(),
         },
         "loyaltyPoints": {"label": "نقاط", "balance": {"int": int(points)}},
         "textModulesData": [

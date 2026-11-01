@@ -1,14 +1,16 @@
 from collections import defaultdict
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .. import audit
 from ..db import get_db
 from ..deps import current_tenant
 from ..models import Ingredient, MenuCategory, Product, RecipeLine, Tenant
+from ..security import client_host
 
 router = APIRouter(prefix="/api/menu", tags=["menu"])
 
@@ -282,13 +284,27 @@ def create_product(payload: ProductIn, db: Session = Depends(get_db)):
 
 @router.patch("/products/{product_id}")
 def update_product(
-    product_id: int, patch: ProductPatch, db: Session = Depends(get_db)
+    product_id: int,
+    patch: ProductPatch,
+    request: Request,
+    db: Session = Depends(get_db),
 ):
     tenant = current_tenant(db)
     product = get_product(db, tenant, product_id)
     changes = patch.model_dump(exclude_unset=True)
     if "category_id" in changes:
         get_category(db, tenant, changes["category_id"])
+    if "price" in changes and changes["price"] != product.price:
+        # A price move is the classic till fraud, so it always leaves a trace.
+        audit.log(
+            db,
+            tenant.id,
+            "product.price",
+            "product",
+            product.id,
+            f"{product.name_en}: {product.price:.2f} → {changes['price']:.2f}",
+            actor=client_host(request),
+        )
     for field, value in changes.items():
         setattr(product, field, value)
     db.commit()
