@@ -1079,6 +1079,48 @@ service.
   to their own arrival and patch the saved rule back in a `finally`; the
   personal-window test clears both columns again in the same way.
 
+## Offline-first till (POS)
+
+- `apps/web/src/lib/offline.ts` owns both halves. `localStorage` keeps the last
+  good answer for four reads (`sufra.cache.pos` = catalog + guest book,
+  `sufra.cache.dashboard`, `sufra.cache.qr`, `sufra.cache.user`) and the outbox
+  (`sufra.pos.outbox`). A cache is read only when the request fails; a 401 from
+  `/api/auth/me` clears the cached member, while a dropped connection keeps it so
+  the till still opens on an offline reload.
+- `ApiError` (`lib/api.ts`) means "the server answered and refused". A `fetch`
+  `TypeError` or a proxy 5xx means "not sent yet". That difference is the only
+  thing the POS uses to choose between showing `pos.failed` and queueing the
+  ticket — do not collapse them back into one `Error`.
+- A queued ticket is the same `{channel, table_no, …, items: [{product_id, qty}]}`
+  payload the till always sends, replayed with `Idempotency-Key` = its local id,
+  so the API still prices, taxes and numbers it and still refuses a sold-out
+  plate. The printed slip shows a local number (`OFF-3`, from
+  `sufra.pos.sequence`); the server's number replaces it on the ticket, never on
+  paper.
+- `syncOutbox()` drains oldest-first on the browser's `online` event, on mount
+  and on a 15 s timer. A network failure (or 401/403/429/5xx) stops the run and
+  keeps the rest; a 4xx is a verdict, so that ticket moves to `sufra.pos.failed`
+  rather than blocking the queue behind it. `components/OfflineStatus.tsx`
+  (mounted once in `AppShell`) renders the offline / pending / synced / failed
+  chips and runs the drain on every screen.
+- Printing: `components/pos/PosReceipt.tsx` is `display: none` on screen and the
+  only visible block under `@media print` besides `.qr-stand`, so the POS
+  banner's print button puts the guest's slip on paper (76mm, monospace, black
+  on white). It prints the local number while the ticket is still queued.
+- A queued ticket syncs into whichever branch is active at replay time — the
+  order payload has no branch field. Do not switch branch with a queue pending.
+- `GET /api/menu/qr` answers **409** for a store with no branch (a restaurant
+  created from `/restaurants` starts without one). `/qr-menu` now reads that as
+  "add a branch first" with a retry instead of the generic failure, and shows the
+  cached link when the connection is down.
+- Verify: open `/pos` signed in (this writes the `sufra.cache.*` keys), then
+  `docker compose -f docker-compose.base44.yml stop api` and reload `/pos`: the
+  catalog still renders, an order shows the offline banner and an `OFF-n` slip,
+  and the chip counts it. `… start api` and wait ≤20 s — the chip reports the
+  sync and the ticket appears on `/orders` / `GET /api/orders` with the server's
+  own prices and number. Delete that test ticket (items first) with `psql`;
+  there is no delete endpoint.
+
 ## Installable app (PWA)
 
 - `apps/web/public/manifest.webmanifest` + `icons/` (espresso tile with the gold
@@ -1089,12 +1131,14 @@ service.
 - The icons are committed PNGs produced once by a throwaway pure-Node script
   (stdlib `zlib`, a tiny PNG writer — there is no Pillow or canvas in the images).
   Regenerate them the same way rather than adding a build dependency.
-- `sw.js` is deliberately small: it precaches the offline page, the manifest and
-  the icons; a **navigation** goes to the network and falls back to
-  `public/offline.html`; production `/assets/*` (fingerprinted) are cached
-  cache-first; `/api/*` is **never** cached, because a ticket, a guest or a punch
-  must be the server's answer. The Vite dev server serves nothing under
-  `/assets/`, so dev/HMR is untouched by that rule.
+- `sw.js` precaches the offline page, the manifest and the icons; a
+  **navigation** goes to the network, saves that document as `/` and falls back
+  to it offline (then to `public/offline.html`); every other same-origin GET is
+  network-first and remembered for the next offline load, which covers the Vite
+  dev server's `/src/*` modules too. `/api/*` is **never** cached, because a
+  ticket, a guest or a punch must be the server's answer — the till's offline
+  copy lives in `localStorage` and its queued tickets in the outbox (see
+  *Offline-first till*).
 - A cross-origin iframe (the Base44 preview pane) may refuse service-worker
   registration; `main.tsx` swallows that rejection on purpose. The app then works
   exactly as a plain web app and the banner/install prompt belongs to the app's

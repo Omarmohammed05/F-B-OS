@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, type DashboardData, type SetupState } from './api';
+import { cacheKeys, readCache, saveCache } from './offline';
 
 type AppDataContextValue = {
   data: DashboardData | null;
@@ -35,13 +36,27 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       .then((result) => {
         if (cancelled) return;
         setData(result);
+        saveCache(cacheKeys.dashboard, result);
         document.documentElement.style.setProperty(
           '--accent',
           result.tenant.accent_color || '#0A84FF',
         );
       })
       .catch(() => {
-        if (!cancelled) setError('failed');
+        if (cancelled) return;
+        // Offline: the shell (store name, accent, currency, branches) is what
+        // the device last saw, so the till keeps its own face and the shift
+        // carries on. The POS says separately that the catalog is a copy.
+        const cached = readCache<DashboardData>(cacheKeys.dashboard);
+        if (cached) {
+          setData(cached);
+          document.documentElement.style.setProperty(
+            '--accent',
+            cached.tenant.accent_color || '#0A84FF',
+          );
+          return;
+        }
+        setError('failed');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
