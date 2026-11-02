@@ -7,7 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { api, type AuthUser } from './api';
+import { ApiError, api, type AuthUser } from './api';
+import { cacheKeys, clearCache, readCache, saveCache } from './offline';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -34,10 +35,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .me()
       .then((result) => {
         if (!cancelled) setUser(result);
+        // Remember who was here, so the till still opens with no connection.
+        saveCache(cacheKeys.user, result);
       })
-      .catch(() => {
-        // 401 is the normal signed-out answer, not an error to show.
-        if (!cancelled) setUser(null);
+      .catch((error) => {
+        if (cancelled) return;
+        // A 401 means the server answered "signed out". Anything else — a fetch
+        // that never connected, or the 5xx a proxy answers when the API is
+        // unreachable — keeps the last member, which is what an offline shift
+        // reads.
+        const unreachable = !(error instanceof ApiError) || error.status >= 500;
+        if (unreachable) {
+          const cached = readCache<AuthUser>(cacheKeys.user);
+          if (cached) {
+            setUser(cached);
+            return;
+          }
+        }
+        clearCache(cacheKeys.user);
+        setUser(null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -48,24 +64,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (username: string, password: string) => {
-    setUser(await api.login(username, password));
+    const member = await api.login(username, password);
+    // Remembered right away, so the till opens offline after this sign-in even
+    // when `/api/auth/me` never gets an answer.
+    saveCache(cacheKeys.user, member);
+    setUser(member);
   }, []);
 
   // The demo visitor: a real session on the sample store, read-only server-side.
   const startDemo = useCallback(async () => {
-    setUser(await api.startDemo());
+    const member = await api.startDemo();
+    saveCache(cacheKeys.user, member);
+    setUser(member);
   }, []);
 
   const signOut = useCallback(async () => {
     try {
       await api.logout();
     } finally {
+      // A device that leaves someone signed in offline must forget them here.
+      clearCache(cacheKeys.user);
       setUser(null);
     }
   }, []);
 
   const finishTour = useCallback(async () => {
-    setUser(await api.finishOnboarding());
+    const member = await api.finishOnboarding();
+    saveCache(cacheKeys.user, member);
+    setUser(member);
   }, []);
 
   const value = useMemo<AuthContextValue>(

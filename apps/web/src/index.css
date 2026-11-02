@@ -217,6 +217,84 @@ body {
 
 /* A printed QR stand is the only thing on the sheet: the app behind it, the
    controls and the sidebar never reach paper. */
+/* The till's slip: never on screen, and the only thing on the paper when the
+   cashier prints it. It follows the QR stand's rules so one `@media print`
+   block owns both sheets. */
+.pos-receipt {
+  display: none;
+}
+
+.receipt-store {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.receipt-line {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 11px;
+}
+
+.receipt-divider {
+  margin: 8px 0;
+  border-top: 1px dashed #000000;
+}
+
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.receipt-number {
+  font-weight: 700;
+}
+
+.receipt-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipt-items li {
+  display: flex;
+  gap: 6px;
+}
+
+.receipt-qty {
+  min-width: 24px;
+}
+
+.receipt-name {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.receipt-amount {
+  white-space: nowrap;
+}
+
+.receipt-total {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #000000;
+  font-weight: 700;
+}
+
+.receipt-pending {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 10px;
+}
+
+.receipt-thanks {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 11px;
+}
+
 @media print {
   body * {
     visibility: hidden;
@@ -225,6 +303,24 @@ body {
   .qr-stand,
   .qr-stand * {
     visibility: visible;
+  }
+
+  .pos-receipt {
+    display: block;
+    position: fixed;
+    inset: 0;
+    width: 76mm;
+    margin: 0 auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: #ffffff;
+  }
+
+  .pos-receipt,
+  .pos-receipt * {
+    visibility: visible;
+    color: #111111 !important;
   }
 
   .qr-stand {

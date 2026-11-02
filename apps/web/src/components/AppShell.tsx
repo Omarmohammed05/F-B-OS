@@ -4,6 +4,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useLang } from '../lib/i18n';
 import { useAppData } from '../lib/store';
 import DemoNotice from './DemoNotice';
+import OfflineStatus from './OfflineStatus';
 import Sidebar from './Sidebar';
 import TabBar from './TabBar';
 import Topbar from './Topbar';
@@ -72,6 +73,7 @@ export default function AppShell() {
       </div>
 
       <DemoNotice />
+      <OfflineStatus />
       <TabBar />
     </div>
   );

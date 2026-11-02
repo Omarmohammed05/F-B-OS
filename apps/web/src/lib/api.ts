@@ -829,6 +829,21 @@ export type LoyaltyData = {
   };
 };
 
+/**
+ * The server answered and refused. A dropped connection is the other case: it
+ * surfaces as the `TypeError` `fetch` rejects with, and that difference is what
+ * lets the till tell "not saved" apart from "not sent yet".
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -844,7 +859,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     // The demo store refuses writes: say so instead of the page's generic text.
     if (response.headers.get('x-demo-read-only') === '1') announceDemoBlocked();
-    throw new Error(message);
+    throw new ApiError(response.status, message);
   }
   return (await response.json()) as T;
 }
@@ -949,9 +964,15 @@ export const api = {
 
   pos: () => request<PosCatalog>('/api/pos'),
   orders: () => request<OrdersData>('/api/orders'),
-  createOrder: (body: OrderInput) =>
+  createOrder: (body: OrderInput, idempotencyKey?: string) =>
     request<Order>('/api/orders', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // A ticket replayed from the device carries the same key, so the counter
+        // never charges a guest twice for one order.
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
       body: JSON.stringify(body),
     }),
   updateOrder: (

@@ -1,13 +1,17 @@
-/* Sufra OS service worker: an offline shell for an installed till.
+/* Sufra OS service worker: the app's own shell, kept on the device.
  *
- * It caches the brand icons and the offline page, answers a navigation with the
- * network and falls back to that page when the counter loses its connection,
- * and keeps hashed build assets (production `/assets/*`) in a runtime cache.
- * The API is never cached — a ticket, a guest or an attendance punch is always
- * the server's answer, never a remembered one.
+ * The till is offline-first, so a reload with no network must still open the
+ * app: a navigation is answered by the network and falls back to the last app
+ * document it saved, and the scripts, styles and images the page asks for come
+ * from the network first and the cache when it is down. `/api/` is still never
+ * cached — a ticket, a guest or a punch is the server's answer, never a
+ * remembered one. The till's own copy of the menu and its queued tickets live in
+ * `localStorage` (`src/lib/offline.ts`), not here.
  */
 
-const VERSION = 'sufra-v1';
+const VERSION = 'sufra-v2';
+// The last app document, whatever route it was opened on.
+const SHELL_DOCUMENT = '/';
 const SHELL = [
   '/offline.html',
   '/manifest.webmanifest',
@@ -36,6 +40,12 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+function remember(request, response) {
+  if (!response || response.status !== 200 || response.type !== 'basic') return;
+  const copy = response.clone();
+  caches.open(VERSION).then((cache) => cache.put(request, copy));
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -47,30 +57,33 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() =>
-        caches
-          .match('/offline.html')
-          .then((page) => page || new Response('Offline', { status: 503 })),
-      ),
+      fetch(request)
+        .then((response) => {
+          // Every route serves the same document, so one copy covers them all.
+          remember(SHELL_DOCUMENT, response);
+          return response;
+        })
+        .catch(async () => {
+          const cache = await caches.open(VERSION);
+          return (
+            (await cache.match(SHELL_DOCUMENT)) ||
+            (await cache.match('/offline.html')) ||
+            new Response('Offline', { status: 503 })
+          );
+        }),
     );
     return;
   }
 
-  // Production builds fingerprint every file under /assets/, so a hit is always
-  // current. The Vite dev server does not serve that path, so dev is untouched.
-  if (url.pathname.startsWith('/assets/')) {
-    event.respondWith(
-      caches.match(request).then(
-        (hit) =>
-          hit ||
-          fetch(request).then((response) => {
-            if (response.ok) {
-              const copy = response.clone();
-              caches.open(VERSION).then((cache) => cache.put(request, copy));
-            }
-            return response;
-          }),
-      ),
-    );
-  }
+  // Scripts, styles, fonts and images: fresh while the network answers, the
+  // remembered copy when it does not. Production fingerprints every file under
+  // /assets/, so a hit there is always current.
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        remember(request, response);
+        return response;
+      })
+      .catch(() => caches.match(request).then((hit) => hit || Response.error())),
+  );
 });
