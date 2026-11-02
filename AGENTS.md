@@ -1085,8 +1085,11 @@ service.
   good answer for four reads (`sufra.cache.pos` = catalog + guest book,
   `sufra.cache.dashboard`, `sufra.cache.qr`, `sufra.cache.user`) and the outbox
   (`sufra.pos.outbox`). A cache is read only when the request fails; a 401 from
-  `/api/auth/me` clears the cached member, while a dropped connection keeps it so
-  the till still opens on an offline reload.
+  `/api/auth/me` clears the cached member, while a dropped connection — or the
+  **5xx a proxy/gateway answers when the API is unreachable**, which is what the
+  Vite proxy does in the sandbox — keeps it, so the till still opens on an
+  offline reload. Auth therefore treats `status >= 500` like an unreachable API,
+  the same way `PosPage.submitOrder` does; do not narrow it back to 401 only.
 - `ApiError` (`lib/api.ts`) means "the server answered and refused". A `fetch`
   `TypeError` or a proxy 5xx means "not sent yet". That difference is the only
   thing the POS uses to choose between showing `pos.failed` and queueing the

@@ -40,9 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((error) => {
         if (cancelled) return;
-        // A server that answers 401 means signed out; a connection that never
-        // answered keeps the last member, which is what an offline shift reads.
-        if (!(error instanceof ApiError)) {
+        // A 401 means the server answered "signed out". Anything else — a fetch
+        // that never connected, or the 5xx a proxy answers when the API is
+        // unreachable — keeps the last member, which is what an offline shift
+        // reads.
+        const unreachable = !(error instanceof ApiError) || error.status >= 500;
+        if (unreachable) {
           const cached = readCache<AuthUser>(cacheKeys.user);
           if (cached) {
             setUser(cached);
