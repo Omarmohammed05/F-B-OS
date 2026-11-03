@@ -40,8 +40,10 @@ PUBLIC_PATHS = (
 PUBLIC_PREFIXES = ("/api/invites/", "/api/public/")
 
 # A demo session reads everything and writes nothing. Signing out is the one
-# exception, otherwise the visitor could not leave.
-DEMO_WRITE_PATHS = ("/api/auth/logout",)
+# exception, otherwise the visitor could not leave; closing the tour is the
+# other, because that call stamps only the account's own flag and refusing it
+# would trap the visitor on the tour with no way out.
+DEMO_WRITE_PATHS = ("/api/auth/logout", "/api/auth/onboarding")
 DEMO_READ_ONLY = "This is the demo store — it is read-only. Open your own store to make changes."
 
 # Who may manage accounts, the store profile and the menu of people's access:
@@ -195,7 +197,9 @@ def user_payload(staff: Staff) -> dict:
         "role": staff.role,
         "is_active": staff.is_active,
         # The tour opens on the first sign-in and can be reopened from the menu.
-        "needs_onboarding": staff.onboarded_at is None,
+        # A read-only demo account is never sent there by itself: it can close
+        # the tour but cannot persist that, so it would be bounced back forever.
+        "needs_onboarding": staff.onboarded_at is None and not staff.is_demo,
         # The UI says so in the top bar, so nobody hunts for a save button.
         "is_demo": staff.is_demo,
     }
